@@ -50,6 +50,56 @@ def create_mlp(
     return torch.nn.Sequential(OrderedDict(layers))
 
 
+class SingleDirectionModel(torch.nn.Module):
+    """K directions nonlinearly conditional on latent code"""
+
+    def __init__(
+        self,
+        size: int,
+        depth: int,
+        alpha: Union[float, List[float]] = 0.1,
+        normalize: bool = True,
+        bias: bool = True,
+        batchnorm: bool = True,
+        final_norm: bool = False,
+    ) -> None:
+        super().__init__()
+        self.size = size
+        self.alpha = alpha
+        self.normalize = normalize
+
+        # make mlp net
+        self.net = create_mlp(
+            depth=depth,
+            in_features=size,
+            middle_features=size,
+            out_features=size,
+            bias=bias,
+            batchnorm=batchnorm,
+            final_norm=final_norm,
+        )
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        #  apply all directions to each batch element
+        dz = self.net(z)
+
+        #  add directions
+        z = z + self.post_process(dz)
+
+        return z
+
+    def sample_alpha(self) -> float:
+        if isinstance(self.alpha, float) or isinstance(self.alpha, int):
+            return self.alpha
+        return np.random.uniform(self.alpha[0], self.alpha[1], size=1)[0]
+
+    def post_process(self, dz: torch.Tensor) -> torch.Tensor:
+        if self.normalize:
+            norm = torch.norm(dz, dim=1)
+            dz = dz / torch.reshape(norm, (-1, 1))
+        return self.sample_alpha() * dz
+
+
 class DirectionModel(torch.nn.Module):
     """K directions nonlinearly conditional on latent code"""
 

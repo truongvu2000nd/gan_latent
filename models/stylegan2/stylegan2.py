@@ -113,9 +113,8 @@ class StyleGAN2Generator(Generator):
 
         ckpt = torch.load(checkpoint, map_location="cpu")
         print(f"Load stylegan2 model from {checkpoint}")
-        missing_keys, unexpected_keys = self.model.load_state_dict(ckpt["g_ema"], strict=False)
-        print(missing_keys, unexpected_keys)
-        self.latent_avg = ckpt["latent_avg"].to(self.device)
+        self.model.load_state_dict(ckpt["g_ema"], strict=False)
+        self.latent_avg = self.model.mean_latent(4096)
 
     def sample_latent(self, n_samples=1, seed=None, truncation=None):
         if seed is None:
