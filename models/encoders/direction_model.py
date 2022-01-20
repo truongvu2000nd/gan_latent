@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from collections import OrderedDict
 from typing import Union, List
@@ -65,39 +67,34 @@ class SingleDirectionModel(torch.nn.Module):
     ) -> None:
         super().__init__()
         self.size = size
-        self.alpha = alpha
+        # self.alpha = alpha
         self.normalize = normalize
 
         # make mlp net
         self.net = create_mlp(
             depth=depth,
-            in_features=size,
+            in_features=size*2,
             middle_features=size,
             out_features=size,
             bias=bias,
             batchnorm=batchnorm,
             final_norm=final_norm,
         )
+        self.alpha = nn.Parameter(torch.Tensor(1))
+        self.alpha.data.fill_(1.)
 
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
-        #  apply all directions to each batch element
+    def forward(self, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
+        z = torch.cat((z1, z2), dim=1)
+        z1_norm = z1.norm(dim=1).view(-1, 1)
         dz = self.net(z)
-
-        #  add directions
-        z = z + self.post_process(dz)
-
-        return z
+        if self.normalize:
+            dz = F.normalize(dz, dim=1)
+        return dz * z1_norm * self.alpha
 
     def sample_alpha(self) -> float:
         if isinstance(self.alpha, float) or isinstance(self.alpha, int):
             return self.alpha
         return np.random.uniform(self.alpha[0], self.alpha[1], size=1)[0]
-
-    def post_process(self, dz: torch.Tensor) -> torch.Tensor:
-        if self.normalize:
-            norm = torch.norm(dz, dim=1)
-            dz = dz / torch.reshape(norm, (-1, 1))
-        return self.sample_alpha() * dz
 
 
 class DirectionModel(torch.nn.Module):
