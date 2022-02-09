@@ -181,7 +181,7 @@ class MaskModel(nn.Module):
     def __init__(self, size=512, depth=3, bias=True, batchnorm=True, final_norm=False):
         super().__init__()
         self.size = size
-        net = create_mlp(
+        self.net = create_mlp(
             depth=depth,
             in_features=size,
             middle_features=size,

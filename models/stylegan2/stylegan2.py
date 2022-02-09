@@ -145,7 +145,7 @@ class StyleGAN2Generator(Generator):
                 "StyleGAN2: cannot change output class without reloading"
             )
 
-    def forward(self, x):
+    def forward(self, x, normalize=False):
         x = x if isinstance(x, list) else [x]
         out, _ = self.model(
             x,
@@ -154,7 +154,9 @@ class StyleGAN2Generator(Generator):
             truncation_latent=self.latent_avg,
             input_is_w=self.w_primary,
         )
-        return 0.5 * (out + 1)
+        if normalize:
+            out = 0.5 * (out + 1)
+        return out
 
     def partial_forward(self, x, layer_name):
         styles = x if isinstance(x, list) else [x]
@@ -306,6 +308,32 @@ class StyleGAN2Generator(Generator):
             raise RuntimeError(f"Layer {layer_names} not encountered in partial_forward")
 
         return outputs
+
+    def w_plus_forward(self, x, normalize=False):
+        assert x.ndim == 3 and x.size(1) == self.model.n_latent
+
+        noise = self.noise
+        latent = self.model.strided_style(x)
+
+        out = self.model.input(latent)
+        out = self.model.conv1(out, latent[:, 0], noise=noise[0])
+
+        skip = self.model.to_rgb1(out, latent[:, 1])
+
+        i = 1
+        for conv1, conv2, noise1, noise2, to_rgb in zip(
+            self.model.convs[::2], self.model.convs[1::2], noise[1::2], noise[2::2], self.model.to_rgbs
+        ):
+            out = conv1(out, latent[:, i], noise=noise1)
+            out = conv2(out, latent[:, i + 1], noise=noise2)
+            skip = to_rgb(out, latent[:, i + 2], skip)
+
+            i += 2
+
+        image = skip
+        if normalize:
+            image = 0.5 * (image + 1)
+        return image
 
     def set_noise_seed(self, seed):
         torch.manual_seed(seed)
