@@ -166,6 +166,40 @@ class DirectionModel(torch.nn.Module):
         return self.sample_alpha() * dz
 
 
+class FixedMaskModel(nn.Module):
+    def __init__(self, size=512):
+        super().__init__()
+        self.size = size
+        self.mask = nn.Parameter(torch.zeros(size), requires_grad=True)
+        nn.init.uniform_(self.mask)
+
+    def forward(self, w1, w2):
+        return w1 * self.mask + w2 * (1 - self.mask)
+
+
+class MaskModel(nn.Module):
+    def __init__(self, size=512, depth=3, bias=True, batchnorm=True, final_norm=False):
+        super().__init__()
+        self.size = size
+        net = create_mlp(
+            depth=depth,
+            in_features=size,
+            middle_features=size,
+            out_features=size,
+            bias=bias,
+            batchnorm=batchnorm,
+            final_norm=final_norm,
+        )
+
+
+    def get_mask(self, w1, w2):
+        return F.sigmoid(self.net(torch.cat((w1, w2), dim=1)))
+
+    def forward(self, w1, w2):
+        mask = self.get_mask(w1, w2)
+        return w1 * mask + w2 * (1 - mask)
+
+
 if __name__ == "__main__":
     model = DirectionModel(k=5, size=512, depth=3)
     print(model)

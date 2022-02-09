@@ -229,6 +229,84 @@ class StyleGAN2Generator(Generator):
 
         raise RuntimeError(f"Layer {layer_name} not encountered in partial_forward")
 
+    def full_forward(self, x, layer_names):
+        styles = x if isinstance(x, list) else [x]
+        inject_index = None
+        noise = self.noise
+
+        if not self.w_primary:
+            styles = [self.model.style(s) for s in styles]
+
+        if len(styles) == 1:
+            # One global latent
+            inject_index = self.model.n_latent
+            latent = self.model.strided_style(
+                styles[0].unsqueeze(1).repeat(1, inject_index, 1)
+            )  # [N, 18, 512]
+        elif len(styles) == 2:
+            # Latent mixing with two latents
+            if inject_index is None:
+                inject_index = random.randint(1, self.model.n_latent - 1)
+
+            latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
+            latent2 = (
+                styles[1].unsqueeze(1).repeat(1, self.model.n_latent - inject_index, 1)
+            )
+
+            latent = self.model.strided_style(torch.cat([latent, latent2], 1))
+        else:
+            # One latent per layer
+            assert (
+                len(styles) == self.model.n_latent
+            ), f"Expected {self.model.n_latents} latents, got {len(styles)}"
+            styles = torch.stack(styles, dim=1)  # [N, 18, 512]
+            latent = self.model.strided_style(styles)
+
+        outputs = []
+
+        if "style" in layer_names:
+            outputs.append(latent)
+
+        out = self.model.input(latent)
+        if "input" == layer_names:
+            outputs.append(out)
+
+        out = self.model.conv1(out, latent[:, 0], noise=noise[0])
+        if "conv1" in layer_names:
+            outputs.append(out)
+
+        skip = self.model.to_rgb1(out, latent[:, 1])
+        if "to_rgb1" in layer_names:
+            outputs.append(skip)
+
+        i = 1
+        noise_i = 1
+
+        for conv1, conv2, to_rgb in zip(
+            self.model.convs[::2], self.model.convs[1::2], self.model.to_rgbs
+        ):
+            out = conv1(out, latent[:, i], noise=noise[noise_i])
+            if f"convs.{i-1}" in layer_names:
+                outputs.append(out)
+
+            out = conv2(out, latent[:, i + 1], noise=noise[noise_i + 1])
+            if f"convs.{i}" in layer_names:
+                outputs.append(out)
+
+            skip = to_rgb(out, latent[:, i + 2], skip)
+            if f"to_rgbs.{i//2}" in layer_names:
+                outputs.append(out)
+
+            i += 2
+            noise_i += 2
+
+        outputs.append(skip)
+
+        if len(outputs) == 1:
+            raise RuntimeError(f"Layer {layer_names} not encountered in partial_forward")
+
+        return outputs
+
     def set_noise_seed(self, seed):
         torch.manual_seed(seed)
         self.noise = [torch.randn(1, 1, 2 ** 2, 2 ** 2, device=self.device)]
