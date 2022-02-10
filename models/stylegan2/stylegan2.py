@@ -319,20 +319,25 @@ class StyleGAN2Generator(Generator):
             )  # use (reproducible) global rand state
 
         rng = np.random.RandomState(seed)
-        z = (
-            torch.from_numpy(
-                rng.standard_normal(512 * n_samples).reshape(n_samples, 512)
-            )
-            .float()
-            .to(self.device)
-        )  # [N, 512]
+        latents = []
+        for i in range(self.model.n_latent):
+            z = (
+                torch.from_numpy(
+                    rng.standard_normal(512 * n_samples).reshape(n_samples, 512)
+                )
+                .float()
+                .to(self.device)
+            )  # [N, 512]
 
-        z = self.model.style(z)
+            z = self.model.style(z)
 
-        if truncation < 1:
-            z = self.latent_avg + truncation * (z - self.latent_avg)
-            z = z.unsqueeze(1).repeat(1, self.model.n_latent, 1)
-        return z
+            if truncation < 1:
+                z = self.latent_avg + truncation * (z - self.latent_avg)
+            
+            latents.append(z.unsqueeze(1))
+
+        latents = torch.cat(latents, dim=1)     # [N, n_latent, 512]
+        return latents
 
     def w_plus_forward(self, x, normalize=False):
         assert x.ndim == 3 and x.size(1) == self.model.n_latent

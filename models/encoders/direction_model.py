@@ -28,9 +28,10 @@ def create_mlp(
 
     #  iteratively construct batchnorm + relu + dense
     for i in range(depth - 1):
-        layers.append(
-            (f"batchnorm_{i+1}", torch.nn.BatchNorm1d(num_features=middle_features))
-        )
+        if batchnorm:
+            layers.append(
+                (f"batchnorm_{i+1}", torch.nn.BatchNorm1d(num_features=middle_features))
+            )
         layers.append((f"relu_{i+1}", torch.nn.ReLU()))
         layers.append(
             (
@@ -178,7 +179,7 @@ class FixedMaskModel(nn.Module):
 
 
 class MaskModel(nn.Module):
-    def __init__(self, size=512, depth=3, bias=True, batchnorm=True, final_norm=False):
+    def __init__(self, size=512, depth=3, bias=True):
         super().__init__()
         self.size = size
         self.net = create_mlp(
@@ -187,10 +188,9 @@ class MaskModel(nn.Module):
             middle_features=size,
             out_features=size,
             bias=bias,
-            batchnorm=batchnorm,
-            final_norm=final_norm,
+            batchnorm=False,
+            final_norm=False,
         )
-
 
     def get_mask(self, w1, w2):
         return F.sigmoid(self.net(torch.cat((w1, w2), dim=1)))
@@ -200,6 +200,34 @@ class MaskModel(nn.Module):
         return w1 * mask + w2 * (1 - mask)
 
 
+class WPlusMaskModel(nn.Module):
+    def __init__(self, size=512, n_latent=18, depth=3, bias=True):
+        super().__init__()
+        self.size = size
+        self.n_latent = n_latent
+
+        self.net = create_mlp(
+            depth=depth,
+            in_features=size*n_latent*2,
+            middle_features=size,
+            out_features=size*n_latent,
+            bias=bias,
+            batchnorm=False,
+            final_norm=False,
+        )
+
+    def forward(self, w1, w2):
+        # return mask
+        bs, _, _ = w1.size()
+        return F.sigmoid(self.net(torch.cat((w1, w2), dim=1).view(bs, -1))).view(bs, self.n_latent, self.size)
+
+
 if __name__ == "__main__":
-    model = DirectionModel(k=5, size=512, depth=3)
+    model = WPlusMaskModel(size=512, n_latent=18, depth=3)
     print(model)
+    from torchinfo import summary
+    w1 = torch.rand(1, 18, 512)
+    w2 = torch.rand(1, 18, 512)
+
+    inp = {"w1": w1, "w2": w2}
+    summary(model, input_data=inp)
