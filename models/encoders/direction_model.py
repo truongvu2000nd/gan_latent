@@ -201,7 +201,7 @@ class MaskModel(nn.Module):
 
 
 class WPlusMaskModel(nn.Module):
-    def __init__(self, size=512, n_latent=18, depth=3, bias=True):
+    def __init__(self, size=512, n_latent=18, depth=3, bias=True, batchnorm=False, final_norm=False):
         super().__init__()
         self.size = size
         self.n_latent = n_latent
@@ -212,8 +212,8 @@ class WPlusMaskModel(nn.Module):
             middle_features=size,
             out_features=size*n_latent,
             bias=bias,
-            batchnorm=False,
-            final_norm=False,
+            batchnorm=batchnorm,
+            final_norm=final_norm,
         )
 
     def forward(self, w1, w2):
