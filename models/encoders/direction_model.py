@@ -219,7 +219,7 @@ class WPlusMaskModel(nn.Module):
     def forward(self, w1, w2):
         # return mask
         bs, _, _ = w1.size()
-        return F.sigmoid(self.net(torch.cat((w1, w2), dim=1).view(bs, -1))).view(bs, self.n_latent, self.size)
+        return torch.sigmoid(self.net(torch.cat((w1, w2), dim=1).view(bs, -1))).view(bs, self.n_latent, self.size)
 
 
 if __name__ == "__main__":
