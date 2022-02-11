@@ -710,13 +710,12 @@ if __name__ == '__main__':
     gen = Generator(256, 512, 8)
     from torchinfo import summary
     x = [torch.rand(1, 512)]
-    # inp = {"styles": x, "input_is_w": True}
-    # print(gen)
-    # summary(gen, input_data=inp)
-    # print(gen)
+    inp = {"styles": x, "input_is_w": True}
+    summary(gen, input_data=inp)
+    print(gen)
 
-    dis = Discriminator(256)
-    dis.final_linear[1] = nn.Identity()
-    x = torch.randn(1, 3, 256, 256)
-    summary(dis, (1, 3, 256, 256))
-    print(dis)
+    # dis = Discriminator(256)
+    # dis.final_linear[1] = nn.Identity()
+    # x = torch.randn(1, 3, 256, 256)
+    # summary(dis, (1, 3, 256, 256))
+    # print(dis)

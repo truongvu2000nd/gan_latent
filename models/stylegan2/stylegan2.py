@@ -339,31 +339,45 @@ class StyleGAN2Generator(Generator):
         latents = torch.cat(latents, dim=1)     # [N, n_latent, 512]
         return latents
 
-    def w_plus_forward(self, x, normalize=False):
+    def w_plus_forward(self, x, normalize=False, output_layers=[]):
         assert x.ndim == 3 and x.size(1) == self.model.n_latent
 
+        outputs = []
         noise = self.noise
         latent = self.model.strided_style(x)
 
         out = self.model.input(latent)
         out = self.model.conv1(out, latent[:, 0], noise=noise[0])
+        if "conv1" in output_layers:
+            outputs.append(out)
 
         skip = self.model.to_rgb1(out, latent[:, 1])
+        if "to_rgb1" in output_layers:
+            outputs.append(skip)
 
         i = 1
         for conv1, conv2, noise1, noise2, to_rgb in zip(
             self.model.convs[::2], self.model.convs[1::2], noise[1::2], noise[2::2], self.model.to_rgbs
         ):
             out = conv1(out, latent[:, i], noise=noise1)
+            if f"convs.{i-1}" in output_layers:
+                outputs.append(out)
+
             out = conv2(out, latent[:, i + 1], noise=noise2)
+            if f"convs.{i}" in output_layers:
+                outputs.append(out)
+
             skip = to_rgb(out, latent[:, i + 2], skip)
+            if f"to_rgbs.{i//2}" in output_layers:
+                outputs.append(out)
 
             i += 2
 
         image = skip
         if normalize:
             image = 0.5 * (image + 1)
-        return image
+
+        return image, outputs
 
     def set_noise_seed(self, seed):
         torch.manual_seed(seed)
