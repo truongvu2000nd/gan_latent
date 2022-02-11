@@ -231,13 +231,24 @@ class StyleGAN2Generator(Generator):
 
         raise RuntimeError(f"Layer {layer_name} not encountered in partial_forward")
 
-    def full_forward(self, x, layer_names):
+    def full_forward(self, x, layer_names=[], truncation=None):
+        if truncation is None:
+            truncation = self.truncation
         styles = x if isinstance(x, list) else [x]
         inject_index = None
         noise = self.noise
 
         if not self.w_primary:
             styles = [self.model.style(s) for s in styles]
+
+        if truncation < 1:
+            style_t = []
+
+            for style in styles:
+                style_t.append(
+                    self.latent_avg + truncation * (style - self.latent_avg)
+                )
+            styles = style_t
 
         if len(styles) == 1:
             # One global latent
@@ -302,12 +313,9 @@ class StyleGAN2Generator(Generator):
             i += 2
             noise_i += 2
 
-        outputs.append(skip)
+        image = skip
 
-        if len(outputs) == 1:
-            raise RuntimeError(f"Layer {layer_names} not encountered in partial_forward")
-
-        return outputs
+        return image, outputs
 
     def sample_w_plus(self, n_samples=1, seed=None, truncation=None):
         if truncation is None:

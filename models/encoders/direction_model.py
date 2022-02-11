@@ -184,7 +184,7 @@ class MaskModel(nn.Module):
         self.size = size
         self.net = create_mlp(
             depth=depth,
-            in_features=size,
+            in_features=size*2,
             middle_features=size,
             out_features=size,
             bias=bias,
@@ -192,12 +192,8 @@ class MaskModel(nn.Module):
             final_norm=False,
         )
 
-    def get_mask(self, w1, w2):
-        return F.sigmoid(self.net(torch.cat((w1, w2), dim=1)))
-
     def forward(self, w1, w2):
-        mask = self.get_mask(w1, w2)
-        return w1 * mask + w2 * (1 - mask)
+        return torch.sigmoid(self.net(torch.cat((w1, w2), dim=1)))
 
 
 class WPlusMaskModel(nn.Module):
