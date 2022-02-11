@@ -179,7 +179,7 @@ class FixedMaskModel(nn.Module):
 
 
 class MaskModel(nn.Module):
-    def __init__(self, size=512, depth=3, bias=True):
+    def __init__(self, size=512, depth=3, bias=True, batchnorm=False, final_norm=False):
         super().__init__()
         self.size = size
         self.net = create_mlp(
@@ -188,8 +188,8 @@ class MaskModel(nn.Module):
             middle_features=size,
             out_features=size,
             bias=bias,
-            batchnorm=False,
-            final_norm=False,
+            batchnorm=batchnorm,
+            final_norm=final_norm,
         )
 
     def forward(self, w1, w2):
