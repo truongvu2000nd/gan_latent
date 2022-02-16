@@ -231,7 +231,7 @@ class StyleGAN2Generator(Generator):
 
         raise RuntimeError(f"Layer {layer_name} not encountered in partial_forward")
 
-    def full_forward(self, x, layer_names=[], truncation=None):
+    def full_forward(self, x, layer_names=[], truncation=None, unnormalize=False):
         if truncation is None:
             truncation = self.truncation
         styles = x if isinstance(x, list) else [x]
@@ -314,6 +314,8 @@ class StyleGAN2Generator(Generator):
             noise_i += 2
 
         image = skip
+        if unnormalize:
+            image = 0.5 * (image + 1)
 
         return image, outputs
 
@@ -347,7 +349,7 @@ class StyleGAN2Generator(Generator):
         latents = torch.cat(latents, dim=1)     # [N, n_latent, 512]
         return latents
 
-    def w_plus_forward(self, x, normalize=False, output_layers=[]):
+    def w_plus_forward(self, x, unnormalize=False, output_layers=[]):
         assert x.ndim == 3 and x.size(1) == self.model.n_latent
 
         outputs = []
@@ -382,7 +384,7 @@ class StyleGAN2Generator(Generator):
             i += 2
 
         image = skip
-        if normalize:
+        if unnormalize:
             image = 0.5 * (image + 1)
 
         return image, outputs
