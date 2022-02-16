@@ -28,9 +28,10 @@ def create_mlp(
 
     #  iteratively construct batchnorm + relu + dense
     for i in range(depth - 1):
-        layers.append(
-            (f"batchnorm_{i+1}", torch.nn.BatchNorm1d(num_features=middle_features))
-        )
+        if batchnorm:
+            layers.append(
+                (f"batchnorm_{i+1}", torch.nn.BatchNorm1d(num_features=middle_features))
+            )
         layers.append((f"relu_{i+1}", torch.nn.ReLU()))
         layers.append(
             (
@@ -166,6 +167,63 @@ class DirectionModel(torch.nn.Module):
         return self.sample_alpha() * dz
 
 
+class FixedMaskModel(nn.Module):
+    def __init__(self, size=512):
+        super().__init__()
+        self.size = size
+        self.mask = nn.Parameter(torch.zeros(size), requires_grad=True)
+        nn.init.uniform_(self.mask)
+
+    def forward(self, w1, w2):
+        return w1 * self.mask + w2 * (1 - self.mask)
+
+
+class MaskModel(nn.Module):
+    def __init__(self, size=512, depth=3, bias=True, batchnorm=False, final_norm=False):
+        super().__init__()
+        self.size = size
+        self.net = create_mlp(
+            depth=depth,
+            in_features=size*2,
+            middle_features=size,
+            out_features=size,
+            bias=bias,
+            batchnorm=batchnorm,
+            final_norm=final_norm,
+        )
+
+    def forward(self, w1, w2):
+        return torch.sigmoid(self.net(torch.cat((w1, w2), dim=1)))
+
+
+class WPlusMaskModel(nn.Module):
+    def __init__(self, size=512, n_latent=18, depth=3, bias=True, batchnorm=False, final_norm=False):
+        super().__init__()
+        self.size = size
+        self.n_latent = n_latent
+
+        self.net = create_mlp(
+            depth=depth,
+            in_features=size*n_latent*2,
+            middle_features=size,
+            out_features=size*n_latent,
+            bias=bias,
+            batchnorm=batchnorm,
+            final_norm=final_norm,
+        )
+
+    def forward(self, w1, w2):
+        # return mask
+        bs, _, _ = w1.size()
+        return torch.sigmoid(self.net(torch.cat((w1, w2), dim=1).view(bs, -1))).view(bs, self.n_latent, self.size)
+
+
 if __name__ == "__main__":
-    model = DirectionModel(k=5, size=512, depth=3)
+    model = WPlusMaskModel(size=512, n_latent=18, depth=3)
     print(model)
+    from torchinfo import summary
+    w1 = torch.rand(1, 18, 512)
+    w2 = torch.rand(1, 18, 512)
+
+    inp = {"w1": w1, "w2": w2}
+    summary(model, input_data=inp)
