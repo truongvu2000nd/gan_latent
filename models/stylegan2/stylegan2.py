@@ -308,7 +308,7 @@ class StyleGAN2Generator(Generator):
 
             skip = to_rgb(out, latent[:, i + 2], skip)
             if f"to_rgbs.{i//2}" in layer_names:
-                outputs.append(out)
+                outputs.append(skip)
 
             i += 2
             noise_i += 2
@@ -379,7 +379,7 @@ class StyleGAN2Generator(Generator):
 
             skip = to_rgb(out, latent[:, i + 2], skip)
             if f"to_rgbs.{i//2}" in output_layers:
-                outputs.append(out)
+                outputs.append(skip)
 
             i += 2
 
