@@ -271,7 +271,7 @@ class MaskModelLSTM(nn.Module):
         c0 = torch.zeros(self.num_layers * self.D, w1.size(0), self.hidden_size, device=w1.device)
 
         out, _ = self.lstm(w2_plus, (h0, c0))
-        return out
+        return torch.sigmoid(out)
 
     def forward2(self, w1_plus, w2_plus):
         """
@@ -289,7 +289,7 @@ class MaskModelLSTM(nn.Module):
         c0 = torch.zeros(self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device)
 
         out, _ = self.lstm(w_cat, (h0, c0))
-        return out
+        return torch.sigmoid(out)
 
 
 class MaskModelGRU(nn.Module):
