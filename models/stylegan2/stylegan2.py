@@ -330,7 +330,7 @@ class StyleGAN2Generator(Generator):
 
         rng = np.random.RandomState(seed)
         latents = []
-        for i in range(self.model.n_latent):
+        for i in range(self.model.n_latent):    # for i in range(14):
             z = (
                 torch.from_numpy(
                     rng.standard_normal(512 * n_samples).reshape(n_samples, 512)
@@ -339,14 +339,14 @@ class StyleGAN2Generator(Generator):
                 .to(self.device)
             )  # [N, 512]
 
-            z = self.model.style(z)
+            z = self.model.style(z)     # w space
 
             if truncation < 1:
                 z = self.latent_avg + truncation * (z - self.latent_avg)
             
             latents.append(z.unsqueeze(1))
 
-        latents = torch.cat(latents, dim=1)     # [N, n_latent, 512]
+        latents = torch.cat(latents, dim=1)     # [N, 14, 512]
         return latents
 
     def w_plus_forward(self, x, unnormalize=False, output_layers=[]):

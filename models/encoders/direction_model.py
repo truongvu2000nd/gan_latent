@@ -74,7 +74,7 @@ class SingleDirectionModel(torch.nn.Module):
         # make mlp net
         self.net = create_mlp(
             depth=depth,
-            in_features=size*2,
+            in_features=size * 2,
             middle_features=size,
             out_features=size,
             bias=bias,
@@ -82,7 +82,7 @@ class SingleDirectionModel(torch.nn.Module):
             final_norm=final_norm,
         )
         self.alpha = nn.Parameter(torch.Tensor(1))
-        self.alpha.data.fill_(1.)
+        self.alpha.data.fill_(1.0)
 
     def forward(self, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
         z = torch.cat((z1, z2), dim=1)
@@ -184,7 +184,7 @@ class MaskModel(nn.Module):
         self.size = size
         self.net = create_mlp(
             depth=depth,
-            in_features=size*2,
+            in_features=size * 2,
             middle_features=size,
             out_features=size,
             bias=bias,
@@ -197,16 +197,24 @@ class MaskModel(nn.Module):
 
 
 class WPlusMaskModel(nn.Module):
-    def __init__(self, size=512, n_latent=18, depth=3, bias=True, batchnorm=False, final_norm=False):
+    def __init__(
+        self,
+        size=512,
+        n_latent=18,
+        depth=3,
+        bias=True,
+        batchnorm=False,
+        final_norm=False,
+    ):
         super().__init__()
         self.size = size
         self.n_latent = n_latent
 
         self.net = create_mlp(
             depth=depth,
-            in_features=size*n_latent*2,
+            in_features=size * n_latent * 2,
             middle_features=size,
-            out_features=size*n_latent,
+            out_features=size * n_latent,
             bias=bias,
             batchnorm=batchnorm,
             final_norm=final_norm,
@@ -215,15 +223,116 @@ class WPlusMaskModel(nn.Module):
     def forward(self, w1, w2):
         # return mask
         bs, _, _ = w1.size()
-        return torch.sigmoid(self.net(torch.cat((w1, w2), dim=1).view(bs, -1))).view(bs, self.n_latent, self.size)
+        return torch.sigmoid(self.net(torch.cat((w1, w2), dim=1).view(bs, -1))).view(
+            bs, self.n_latent, self.size
+        )
+
+
+class MaskModelLSTM(nn.Module):
+    def __init__(
+        self,
+        input_size=512,
+        hidden_size=512,
+        num_layers=2,
+        dropout=0,
+        bidirectional=False,
+    ):
+        """
+        """
+        super().__init__()
+
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
+        if bidirectional:
+            self.D = 2
+        else:
+            self.D = 1
+
+        self.lstm = nn.LSTM(
+            input_size,
+            hidden_size,
+            num_layers,
+            batch_first=True,
+            dropout=dropout,
+            bidirectional=bidirectional,
+        )
+        # self.fc = nn.Linear()
+
+    def forward(self, w1: torch.Tensor, w2_plus: torch.Tensor):
+        """
+        Input:
+            w1: N, 512 -- hidden
+            w2: N, 14, 512 -- input sequence
+        Output:
+            mask: N, 14, 512 [binary or (0, 1)]
+            w1.repeat(1, 14, 1) * mask + w2 * (1-mask)
+        """
+        h0 = w1.unsqueeze(0).repeat(self.num_layers * self.D, 1, 1)    # num_layers, N, 512
+        c0 = torch.zeros(self.num_layers * self.D, w1.size(0), self.hidden_size, device=w1.device)
+
+        out, _ = self.lstm(w2_plus, (h0, c0))
+        return out
+
+    def forward2(self, w1_plus, w2_plus):
+        """
+        Input:
+            w1: N, 14, 512 
+            w2: N, 14, 512 
+            w=cat(w1, w2) [N, 14, 1024] -- input sequence with random hidden
+        Output:
+            mask: N, 14, 512 [binary or (0, 1)] -- return sequence
+            w1 * mask + w2 * (1-mask)
+        """
+        bs = w1_plus.size(0)
+        w_cat = torch.cat((w1_plus, w2_plus), dim=2)  # [N, 14, 1024]
+        h0 = torch.zeros(self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device)
+        c0 = torch.zeros(self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device)
+
+        out, _ = self.lstm(w_cat, (h0, c0))
+        return out
+
+
+class MaskModelGRU(nn.Module):
+    def __init__(self) -> None:
+        """
+            net: GRU 14
+        """
+        super().__init__()
+        self.net = nn.GRU()
+
+        self.fc = nn.Linear()
+
+    def forward1(self, w1, w2_plus):
+        """
+        Input:
+            w1: N, 512 -- hidden
+            w2: N, 14, 512 -- input sequence
+        Output:
+            mask: N, 14, 512 [binary or (0, 1)]
+            w1.repeat(1, 14, 1) * mask + w2 * (1-mask)
+        """
+        pass
+
+    def forward2(self, w1_plus, w2_plus):
+        """
+        Input:
+            w1: N, 14, 512 
+            w2: N, 14, 512 
+            w=cat(w1, w2) [N, 14, 1024] -- input sequence with random hidden
+        Output:
+            mask: N, 14, 512 [binary or (0, 1)] -- return sequence
+            w1 * mask + w2 * (1-mask)
+        """
+        pass
 
 
 if __name__ == "__main__":
-    model = WPlusMaskModel(size=512, n_latent=18, depth=3)
+    model = MaskModelLSTM(num_layers=2, input_size=1024, bidirectional=False)
     print(model)
     from torchinfo import summary
-    w1 = torch.rand(1, 18, 512)
-    w2 = torch.rand(1, 18, 512)
 
-    inp = {"w1": w1, "w2": w2}
+    w1 = torch.rand(1, 14, 512)
+    w2 = torch.rand(1, 14, 512)
+
+    inp = {"w1_plus": w1, "w2_plus": w2}
     summary(model, input_data=inp)
