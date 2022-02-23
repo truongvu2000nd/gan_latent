@@ -341,11 +341,8 @@ class MaskModelGRU(nn.Module):
         h0 = w1.unsqueeze(0).repeat(
             self.num_layers * self.D, 1, 1
         )  # num_layers, N, 512
-        c0 = torch.zeros(
-            self.num_layers * self.D, w1.size(0), self.hidden_size, device=w1.device
-        )
 
-        out, _ = self.gru(w2_plus, (h0, c0))
+        out, _ = self.gru(w2_plus, h0)
         return out
 
     def forward2(self, w1_plus, w2_plus):
@@ -363,11 +360,8 @@ class MaskModelGRU(nn.Module):
         h0 = torch.zeros(
             self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device
         )
-        c0 = torch.zeros(
-            self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device
-        )
 
-        out, _ = self.gru(w_cat, (h0, c0))
+        out, _ = self.gru(w_cat, h0)
         return out
 
 
