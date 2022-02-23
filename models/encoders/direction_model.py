@@ -267,11 +267,15 @@ class MaskModelLSTM(nn.Module):
             mask: N, 14, 512 [binary or (0, 1)]
             w1.repeat(1, 14, 1) * mask + w2 * (1-mask)
         """
-        h0 = w1.unsqueeze(0).repeat(self.num_layers * self.D, 1, 1)    # num_layers, N, 512
-        c0 = torch.zeros(self.num_layers * self.D, w1.size(0), self.hidden_size, device=w1.device)
+        h0 = w1.unsqueeze(0).repeat(
+            self.num_layers * self.D, 1, 1
+        )  # num_layers, N, 512
+        c0 = torch.zeros(
+            self.num_layers * self.D, w1.size(0), self.hidden_size, device=w1.device
+        )
 
         out, _ = self.lstm(w2_plus, (h0, c0))
-        return torch.sigmoid(out)
+        return out
 
     def forward2(self, w1_plus, w2_plus):
         """
@@ -285,24 +289,47 @@ class MaskModelLSTM(nn.Module):
         """
         bs = w1_plus.size(0)
         w_cat = torch.cat((w1_plus, w2_plus), dim=2)  # [N, 14, 1024]
-        h0 = torch.zeros(self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device)
-        c0 = torch.zeros(self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device)
+        h0 = torch.zeros(
+            self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device
+        )
+        c0 = torch.zeros(
+            self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device
+        )
 
         out, _ = self.lstm(w_cat, (h0, c0))
-        return torch.sigmoid(out)
+        return out
 
 
 class MaskModelGRU(nn.Module):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        input_size=512,
+        hidden_size=512,
+        num_layers=2,
+        dropout=0,
+        bidirectional=False,
+    ) -> None:
         """
             net: GRU 14
         """
         super().__init__()
-        self.net = nn.GRU()
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
+        if bidirectional:
+            self.D = 2
+        else:
+            self.D = 1
 
-        self.fc = nn.Linear()
+        self.gru = nn.GRU(
+            input_size,
+            hidden_size,
+            num_layers,
+            batch_first=True,
+            dropout=dropout,
+            bidirectional=bidirectional,
+        )
 
-    def forward1(self, w1, w2_plus):
+    def forward(self, w1: torch.Tensor, w2_plus: torch.Tensor):
         """
         Input:
             w1: N, 512 -- hidden
@@ -311,7 +338,15 @@ class MaskModelGRU(nn.Module):
             mask: N, 14, 512 [binary or (0, 1)]
             w1.repeat(1, 14, 1) * mask + w2 * (1-mask)
         """
-        pass
+        h0 = w1.unsqueeze(0).repeat(
+            self.num_layers * self.D, 1, 1
+        )  # num_layers, N, 512
+        c0 = torch.zeros(
+            self.num_layers * self.D, w1.size(0), self.hidden_size, device=w1.device
+        )
+
+        out, _ = self.gru(w2_plus, (h0, c0))
+        return out
 
     def forward2(self, w1_plus, w2_plus):
         """
@@ -323,16 +358,25 @@ class MaskModelGRU(nn.Module):
             mask: N, 14, 512 [binary or (0, 1)] -- return sequence
             w1 * mask + w2 * (1-mask)
         """
-        pass
+        bs = w1_plus.size(0)
+        w_cat = torch.cat((w1_plus, w2_plus), dim=2)  # [N, 14, 1024]
+        h0 = torch.zeros(
+            self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device
+        )
+        c0 = torch.zeros(
+            self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device
+        )
+
+        out, _ = self.gru(w_cat, (h0, c0))
+        return out
 
 
 if __name__ == "__main__":
-    model = MaskModelLSTM(num_layers=2, input_size=1024, bidirectional=False)
+    model = MaskModelLSTM(num_layers=2, input_size=1024, bidirectional=True)
     print(model)
     from torchinfo import summary
 
     w1 = torch.rand(1, 14, 512)
     w2 = torch.rand(1, 14, 512)
 
-    inp = {"w1_plus": w1, "w2_plus": w2}
-    summary(model, input_data=inp)
+    model.forward2(w1, w2)
