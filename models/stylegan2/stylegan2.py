@@ -67,6 +67,7 @@ class StyleGAN2Generator(Generator):
         self.has_latent_residual = True
         self.load_model(model_path)
         self.set_noise_seed(0)
+        self.face_pool = nn.AdaptiveAvgPool2d((256, 256))
 
     def n_latent(self):
         return self.model.n_latent
@@ -145,7 +146,7 @@ class StyleGAN2Generator(Generator):
                 "StyleGAN2: cannot change output class without reloading"
             )
 
-    def forward(self, x, normalize=False):
+    def forward(self, x, normalize=False, resize=True):
         x = x if isinstance(x, list) else [x]
         out, _ = self.model(
             x,
@@ -156,6 +157,8 @@ class StyleGAN2Generator(Generator):
         )
         if normalize:
             out = 0.5 * (out + 1)
+        if resize:
+            out = nn.face_pool(out)
         return out
 
     def partial_forward(self, x, layer_name):
@@ -231,7 +234,7 @@ class StyleGAN2Generator(Generator):
 
         raise RuntimeError(f"Layer {layer_name} not encountered in partial_forward")
 
-    def full_forward(self, x, layer_names=[], truncation=None, unnormalize=False):
+    def full_forward(self, x, layer_names=[], truncation=None, unnormalize=False, resize=True):
         if truncation is None:
             truncation = self.truncation
         styles = x if isinstance(x, list) else [x]
@@ -316,6 +319,9 @@ class StyleGAN2Generator(Generator):
         image = skip
         if unnormalize:
             image = 0.5 * (image + 1)
+        
+        if resize:
+            image = nn.face_pool(image)
 
         return image, outputs
 
@@ -349,7 +355,7 @@ class StyleGAN2Generator(Generator):
         latents = torch.cat(latents, dim=1)     # [N, 14, 512]
         return latents
 
-    def w_plus_forward(self, x, unnormalize=False, output_layers=[]):
+    def w_plus_forward(self, x, unnormalize=False, output_layers=[], resize=True):
         assert x.ndim == 3 and x.size(1) == self.model.n_latent
 
         outputs = []
@@ -386,6 +392,9 @@ class StyleGAN2Generator(Generator):
         image = skip
         if unnormalize:
             image = 0.5 * (image + 1)
+
+        if resize:
+            image = self.face_pool(image)
 
         return image, outputs
 
