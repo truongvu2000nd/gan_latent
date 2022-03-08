@@ -35,7 +35,7 @@ class Upsample(nn.Module):
 
         self.factor = factor
         kernel = make_kernel(kernel) * (factor ** 2)
-        self.register_buffer("kernel", kernel)
+        self.register_buffer('kernel', kernel)
 
         p = kernel.shape[0] - factor
 
@@ -56,7 +56,7 @@ class Downsample(nn.Module):
 
         self.factor = factor
         kernel = make_kernel(kernel)
-        self.register_buffer("kernel", kernel)
+        self.register_buffer('kernel', kernel)
 
         p = kernel.shape[0] - factor
 
@@ -80,7 +80,7 @@ class Blur(nn.Module):
         if upsample_factor > 1:
             kernel = kernel * (upsample_factor ** 2)
 
-        self.register_buffer("kernel", kernel)
+        self.register_buffer('kernel', kernel)
 
         self.pad = pad
 
@@ -123,8 +123,8 @@ class EqualConv2d(nn.Module):
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]},"
-            f" {self.weight.shape[2]}, stride={self.stride}, padding={self.padding})"
+            f'{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]},'
+            f' {self.weight.shape[2]}, stride={self.stride}, padding={self.padding})'
         )
 
 
@@ -161,7 +161,7 @@ class EqualLinear(nn.Module):
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]})"
+            f'{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]})'
         )
 
 
@@ -228,8 +228,8 @@ class ModulatedConv2d(nn.Module):
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}({self.in_channel}, {self.out_channel}, {self.kernel_size}, "
-            f"upsample={self.upsample}, downsample={self.downsample})"
+            f'{self.__class__.__name__}({self.in_channel}, {self.out_channel}, {self.kernel_size}, '
+            f'upsample={self.upsample}, downsample={self.downsample})'
         )
 
     def forward(self, input, style):
@@ -268,7 +268,7 @@ class ModulatedConv2d(nn.Module):
             out = out.view(batch, self.out_channel, height, width)
 
         else:
-            input = input.view(1, batch * in_channel, height, width)
+            input = input.contiguous().view(1, batch * in_channel, height, width)
             out = F.conv2d(input, weight, padding=self.padding, groups=batch)
             _, _, height, width = out.shape
             out = out.view(batch, self.out_channel, height, width)
@@ -298,6 +298,8 @@ class ConstantInput(nn.Module):
 
     def forward(self, input):
         batch = input.shape[0]
+        if len(input.shape) == 2:
+            batch = 1
         out = self.input.repeat(batch, 1, 1, 1)
 
         return out
@@ -362,27 +364,6 @@ class ToRGB(nn.Module):
         return out
 
 
-# Wrapper that gives name to tensor
-class NamedTensor(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        return x
-
-
-# Give each style a unique name
-class StridedStyle(nn.ModuleList):
-    def __init__(self, n_latents):
-        super().__init__([NamedTensor() for _ in range(n_latents)])
-        self.n_latents = n_latents
-
-    def forward(self, x):
-        # x already strided
-        styles = [self[i](x[:, i, :]) for i in range(self.n_latents)]
-        return torch.stack(styles, dim=1)
-
-
 class Generator(nn.Module):
     def __init__(
         self,
@@ -404,7 +385,7 @@ class Generator(nn.Module):
         for i in range(n_mlp):
             layers.append(
                 EqualLinear(
-                    style_dim, style_dim, lr_mul=lr_mlp, activation="fused_lrelu"
+                    style_dim, style_dim, lr_mul=lr_mlp, activation='fused_lrelu'
                 )
             )
 
@@ -441,7 +422,7 @@ class Generator(nn.Module):
         for layer_idx in range(self.num_layers):
             res = (layer_idx + 5) // 2
             shape = [1, 1, 2 ** res, 2 ** res]
-            self.noises.register_buffer(f"noise_{layer_idx}", torch.randn(*shape))
+            self.noises.register_buffer(f'noise_{layer_idx}', torch.randn(*shape))
 
         for i in range(3, self.log_size + 1):
             out_channel = self.channels[2 ** i]
@@ -468,10 +449,9 @@ class Generator(nn.Module):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
-        self.strided_style = StridedStyle(self.n_latent)
 
     def make_noise(self):
-        device = self.input.input.device
+        device = self.conv1.conv.weight.device
 
         noises = [torch.randn(1, 1, 2 ** 2, 2 ** 2, device=device)]
 
@@ -493,17 +473,19 @@ class Generator(nn.Module):
         return self.style(input)
 
     def forward(
-        self,
+        self,        
         styles,
+        strucs=None,
         return_latents=False,
         inject_index=None,
         truncation=1,
         truncation_latent=None,
-        input_is_w=False,
+        input_is_latent=True,
         noise=None,
         randomize_noise=True,
     ):
-        if not input_is_w:
+        
+        if not input_is_latent:
             styles = [self.style(s) for s in styles]
 
         if noise is None:
@@ -511,7 +493,7 @@ class Generator(nn.Module):
                 noise = [None] * self.num_layers
             else:
                 noise = [
-                    getattr(self.noises, f"noise_{i}") for i in range(self.num_layers)
+                    getattr(self.noises, f'noise_{i}') for i in range(self.num_layers)
                 ]
 
         if truncation < 1:
@@ -524,8 +506,7 @@ class Generator(nn.Module):
 
             styles = style_t
 
-        if len(styles) == 1:
-            # One global latent
+        if len(styles) < 2:
             inject_index = self.n_latent
 
             if styles[0].ndim < 3:
@@ -534,24 +515,15 @@ class Generator(nn.Module):
             else:
                 latent = styles[0]
 
-        elif len(styles) == 2:
-            # Latent mixing with two latents
-            if inject_index is None:
-                inject_index = random.randint(1, self.n_latent - 1)
-
-            latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
-            latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
-
-            latent = self.strided_style(torch.cat([latent, latent2], 1))
         else:
-            # One latent per layer
-            assert (
-                len(styles) == self.n_latent
-            ), f"Expected {self.n_latents} latents, got {len(styles)}"
-            styles = torch.stack(styles, dim=1)  # [N, 18, 512]
-            latent = self.strided_style(styles)
+            latent = styles[0]
+            if inject_index is not None:
+                latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
+                latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
 
-        out = self.input(latent)
+                latent = torch.cat([latent, latent2], 1)
+        
+        out = strucs if strucs is not None else self.input(latent)
         out = self.conv1(out, latent[:, 0], noise=noise[0])
 
         skip = self.to_rgb1(out, latent[:, 1])
@@ -681,7 +653,7 @@ class Discriminator(nn.Module):
 
         self.final_conv = ConvLayer(in_channel + 1, channels[4], 3)
         self.final_linear = nn.Sequential(
-            EqualLinear(channels[4] * 4 * 4, channels[4], activation="fused_lrelu"),
+            EqualLinear(channels[4] * 4 * 4, channels[4], activation='fused_lrelu'),
             EqualLinear(channels[4], 1),
         )
 

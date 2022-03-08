@@ -153,7 +153,7 @@ class StyleGAN2Generator(Generator):
             noise=self.noise,
             truncation=self.truncation,
             truncation_latent=self.latent_avg,
-            input_is_w=self.w_primary,
+            input_is_latent=self.w_primary,
         )
         if normalize:
             out = 0.5 * (out + 1)
