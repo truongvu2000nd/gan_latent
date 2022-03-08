@@ -365,12 +365,62 @@ class MaskModelGRU(nn.Module):
         return out
 
 
+class Highway(nn.Module):
+    def __init__(self, size, num_layers, act="relu"):
+
+        super(Highway, self).__init__()
+
+        self.num_layers = num_layers
+        self.nonlinear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
+        self.linear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
+        self.gate = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
+        if act == "relu":
+            self.act = nn.ReLU()
+        elif act == "lrelu":
+            self.act = nn.LeakyReLU(negative_slope=0.2)
+        else:
+            raise NotImplementedError
+
+    def forward(self, x):
+        """
+            :param x: tensor with shape of [batch_size, size]
+            :return: tensor with shape of [batch_size, size]
+            applies σ(x) ⨀ (f(G(x))) + (1 - σ(x)) ⨀ (Q(x)) transformation | G and Q is affine transformation,
+            f is non-linear transformation, σ(x) is affine transformation with sigmoid non-linearition
+            and ⨀ is element-wise multiplication
+            """
+
+        for layer in range(self.num_layers):
+            gate = torch.sigmoid(self.gate[layer](x))
+            nonlinear = self.act(self.nonlinear[layer](x))
+            linear = self.linear[layer](x)
+            x = gate * nonlinear + (1 - gate) * linear
+
+        return x
+
+
+class MaskHighway(nn.Module):
+    def __init__(self, size=256, n_latent=18, num_layers=5, act="relu"):
+        super().__init__()
+        self.fc1s = nn.ModuleList([nn.Linear(1024, size) for _ in range(n_latent)])
+        self.fc2s = nn.ModuleList([nn.Linear(size, 512) for _ in range(n_latent)])
+        self.highways = nn.ModuleList([Highway(size, num_layers, act=act) for _ in range(n_latent)])
+
+    def forward(self, w1, w2):
+        w_cat = torch.cat((w1, w2), dim=2)
+        mask = []
+        for i in range(w_cat.size(1)):
+            out = self.fc1s[i](w_cat[:, i])
+            out = self.highways[i](out)
+            out = self.fc2s[i](out)
+            mask.append(out.unsqueeze(1))
+
+        return torch.cat(mask, dim=1)
+
+
 if __name__ == "__main__":
-    model = MaskModelLSTM(num_layers=2, input_size=1024, bidirectional=True)
-    print(model)
     from torchinfo import summary
 
-    w1 = torch.rand(1, 14, 512)
-    w2 = torch.rand(1, 14, 512)
-
-    model.forward2(w1, w2)
+    w1, w2 = torch.randn(1, 18, 512), torch.randn(1, 18, 512)
+    model = MaskHighway(num_layers=3, act="lrelu")
+    summary(model, input_size=[(1,18,512), (1,18,512)])
