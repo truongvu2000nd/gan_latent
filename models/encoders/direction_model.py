@@ -414,8 +414,8 @@ class MaskHighway(nn.Module):
             out = self.highways[i](out)
             out = self.fc2s[i](out)
             mask.append(out.unsqueeze(1))
-
-        return torch.cat(mask, dim=1)
+        mask = torch.cat(mask, dim=1)
+        return torch.sigmoid(mask)
 
 
 if __name__ == "__main__":
