@@ -17,24 +17,20 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from .abstract import Generator
-
 from models.stylegan2.model import Generator as StyleGAN2Model
 from models.model_utils import download_ckpt
 
 
-class StyleGAN2Generator(Generator):
+class StyleGAN2Generator(nn.Module):
     def __init__(
         self,
         model_path: str,
-        class_name: str = "ffhq",
         truncation: float = 1.0,
         use_w: bool = False,
-        feature_layer: str = "generator.layers.0",
         device: str = "cpu",
         resolution: int = None,
     ):
-        super(StyleGAN2Generator, self).__init__(feature_layer=feature_layer)
+        super(StyleGAN2Generator, self).__init__()
         self.device = device
         self.truncation = truncation
         self.latent_avg = None
