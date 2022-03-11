@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models.encoders import Backbone
+from models.encoders import Backbone, IR_101
 from configs.paths_config import model_paths
 
 
@@ -70,13 +70,33 @@ class ContrastiveLoss(nn.Module):
         return acc, loss
 
 
-class SimIDLoss(nn.Module):
+class ArcFaceLoss(nn.Module):
     def __init__(self):
-        super(SimIDLoss, self).__init__()
+        super(ArcFaceLoss, self).__init__()
         self.facenet = Backbone(
             input_size=112, num_layers=50, drop_ratio=0.6, mode="ir_se"
         )
         self.facenet.load_state_dict(torch.load(model_paths["ir_se50"]))
+        self.face_pool = torch.nn.AdaptiveAvgPool2d((112, 112))
+        self.facenet.eval()
+
+    def extract_feats(self, x):
+        x = x[:, :, 35:223, 32:220]  # Crop interesting region
+        x = self.face_pool(x)
+        x_feats = self.facenet(x)
+        return x_feats
+
+    def forward(self, x, y):
+        x_feats = self.extract_feats(x)
+        y_feats = self.extract_feats(y)
+        return F.cosine_similarity(x_feats, y_feats)
+
+
+class CircularFaceLoss(nn.Module):
+    def __init__(self):
+        super(CircularFaceLoss, self).__init__()
+        self.facenet = IR_101(input_size=112)
+        self.facenet.load_state_dict(torch.load(model_paths["circular_face"]))
         self.face_pool = torch.nn.AdaptiveAvgPool2d((112, 112))
         self.facenet.eval()
 

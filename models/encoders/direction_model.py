@@ -257,7 +257,11 @@ class Highway(nn.Module):
         super(Highway, self).__init__()
 
         self.num_layers = num_layers
-        self.nonlinear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
+        self.nonlinear = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(size, size),
+                nn.BatchNorm1d(size)
+            ) for _ in range(num_layers)])
         self.linear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
         self.gate = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
         if act == "relu":
