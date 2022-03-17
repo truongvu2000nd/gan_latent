@@ -129,3 +129,27 @@ if __name__ == '__main__':
 
     model = Hopenet()
     model.eval()
+    # Load snapshot
+    saved_state_dict = torch.load("/mnt/D4AEE2D5AEE2AF64/ML-DS/GANs/gan_latent/pretrained/hopenet_alpha1.pkl", map_location="cpu")
+    print(model.load_state_dict(saved_state_dict))
+
+    img_path = "/mnt/D4AEE2D5AEE2AF64/ML-DS/GANs/datasets/CelebAMask-HQ/CelebA-HQ-img/0.jpg"
+    transform = transforms.Compose([
+        transforms.Resize(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+    img = Image.open(img_path)
+    img = img.convert("RGB")
+    img = transform(img).unsqueeze(0)
+    print(img.shape)         #torch.Size([C,H,W])
+
+    with torch.no_grad():
+        yaw_predicted, pitch_predicted, roll_predicted = model(img)
+
+        cv2_img = cv2.imread(img_path)
+        cv2_img = cv2.resize(cv2_img, (224, 224))
+        # utils.plot_pose_cube(cv2_img, yaw_predicted[0], pitch_predicted[0], roll_predicted[0], size=100)
+        draw_axis(cv2_img, yaw_predicted[0], pitch_predicted[0], roll_predicted[0], size=100)
+        cv2.imwrite("show_img22.jpg", cv2_img)
+        print(yaw_predicted, pitch_predicted, roll_predicted)

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from models.encoders import Backbone, IR_101
 from configs.paths_config import model_paths
-
+from facenet_pytorch import MTCNN, InceptionResnetV1
 
 class ContrastiveLoss(nn.Module):
     """Computes the contrastive loss
@@ -79,10 +79,20 @@ class ArcFaceLoss(nn.Module):
         self.facenet.load_state_dict(torch.load(model_paths["ir_se50"]))
         self.face_pool = torch.nn.AdaptiveAvgPool2d((112, 112))
         self.facenet.eval()
+        self.mtcnn = MTCNN(image_size=112)
 
-    def extract_feats(self, x):
-        x = x[:, :, 35:223, 32:220]  # Crop interesting region
-        x = self.face_pool(x)
+    def extract_feats(self, imgs):
+        x = (imgs.permute(0, 2, 3, 1) * 255).long()
+        batch_boxes , _ = self.mtcnn.detect(x)
+        outs = []
+        for img, box in zip(imgs, batch_boxes):
+            img, box = imgs[0], batch_boxes[0]
+            box = box[0].astype("int")
+            img = img[:, box[1]:box[3], box[0]:box[2]]
+            out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
+            outs.append(out)
+        outs = torch.cat(outs, dim=0)
+        x = self.face_pool(outs)
         x_feats = self.facenet(x)
         return x_feats
 
@@ -99,10 +109,20 @@ class CircularFaceLoss(nn.Module):
         self.facenet.load_state_dict(torch.load(model_paths["circular_face"]))
         self.face_pool = torch.nn.AdaptiveAvgPool2d((112, 112))
         self.facenet.eval()
+        self.mtcnn = MTCNN(image_size=112)
 
-    def extract_feats(self, x):
-        x = x[:, :, 35:223, 32:220]  # Crop interesting region
-        x = self.face_pool(x)
+    def extract_feats(self, imgs):
+        x = (imgs.permute(0, 2, 3, 1) * 255).long()
+        batch_boxes , _ = self.mtcnn.detect(x)
+        outs = []
+        for img, box in zip(imgs, batch_boxes):
+            img, box = imgs[0], batch_boxes[0]
+            box = box[0].astype("int")
+            img = img[:, box[1]:box[3], box[0]:box[2]]
+            out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
+            outs.append(out)
+        outs = torch.cat(outs, dim=0)
+        x = self.face_pool(outs)
         x_feats = self.facenet(x)
         return x_feats
 
