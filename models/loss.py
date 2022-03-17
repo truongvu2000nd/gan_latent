@@ -5,6 +5,7 @@ from models.encoders import Backbone, IR_101
 from configs.paths_config import model_paths
 from facenet_pytorch import MTCNN, InceptionResnetV1
 
+
 class ContrastiveLoss(nn.Module):
     """Computes the contrastive loss
 
@@ -71,7 +72,7 @@ class ContrastiveLoss(nn.Module):
 
 
 class ArcFaceLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, device="cpu"):
         super(ArcFaceLoss, self).__init__()
         self.facenet = Backbone(
             input_size=112, num_layers=50, drop_ratio=0.6, mode="ir_se"
@@ -79,14 +80,13 @@ class ArcFaceLoss(nn.Module):
         self.facenet.load_state_dict(torch.load(model_paths["ir_se50"]))
         self.face_pool = torch.nn.AdaptiveAvgPool2d((112, 112))
         self.facenet.eval()
-        self.mtcnn = MTCNN(image_size=112)
+        self.mtcnn = MTCNN(image_size=112, device=device)
 
     def extract_feats(self, imgs):
         x = (imgs.permute(0, 2, 3, 1) * 255).long()
         batch_boxes , _ = self.mtcnn.detect(x)
         outs = []
         for img, box in zip(imgs, batch_boxes):
-            img, box = imgs[0], batch_boxes[0]
             box = box[0].astype("int")
             img = img[:, box[1]:box[3], box[0]:box[2]]
             out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
@@ -103,20 +103,19 @@ class ArcFaceLoss(nn.Module):
 
 
 class CircularFaceLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, device="cpu"):
         super(CircularFaceLoss, self).__init__()
         self.facenet = IR_101(input_size=112)
         self.facenet.load_state_dict(torch.load(model_paths["circular_face"]))
         self.face_pool = torch.nn.AdaptiveAvgPool2d((112, 112))
         self.facenet.eval()
-        self.mtcnn = MTCNN(image_size=112)
+        self.mtcnn = MTCNN(image_size=112, device=device)
 
     def extract_feats(self, imgs):
         x = (imgs.permute(0, 2, 3, 1) * 255).long()
         batch_boxes , _ = self.mtcnn.detect(x)
         outs = []
         for img, box in zip(imgs, batch_boxes):
-            img, box = imgs[0], batch_boxes[0]
             box = box[0].astype("int")
             img = img[:, box[1]:box[3], box[0]:box[2]]
             out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")

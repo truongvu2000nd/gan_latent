@@ -13,6 +13,7 @@ def create_mlp(
     out_features: int,
     bias: bool = True,
     batchnorm: bool = True,
+    momentum: float = 0.1,
     final_norm: bool = False,
 ):
     # initial dense layer
@@ -30,7 +31,7 @@ def create_mlp(
     for i in range(depth - 1):
         if batchnorm:
             layers.append(
-                (f"batchnorm_{i+1}", torch.nn.BatchNorm1d(num_features=middle_features))
+                (f"batchnorm_{i+1}", torch.nn.BatchNorm1d(num_features=middle_features, momentum=momentum))
             )
         layers.append((f"relu_{i+1}", torch.nn.ReLU()))
         layers.append(
@@ -46,7 +47,7 @@ def create_mlp(
 
     if final_norm:
         layers.append(
-            (f"batchnorm_{depth}", torch.nn.BatchNorm1d(num_features=out_features))
+            (f"batchnorm_{depth}", torch.nn.BatchNorm1d(num_features=out_features, momentum=momentum))
         )
 
     # return network
@@ -90,6 +91,7 @@ class WPlusMaskModel(nn.Module):
         depth=3,
         bias=True,
         batchnorm=False,
+        momentum=0.1,
         final_norm=False,
     ):
         super().__init__()
@@ -103,6 +105,7 @@ class WPlusMaskModel(nn.Module):
             out_features=size * n_latent,
             bias=bias,
             batchnorm=batchnorm,
+            momentum=momentum,
             final_norm=final_norm,
         )
 
@@ -114,145 +117,8 @@ class WPlusMaskModel(nn.Module):
         )
 
 
-class MaskModelLSTM(nn.Module):
-    def __init__(
-        self,
-        input_size=512,
-        hidden_size=512,
-        num_layers=2,
-        dropout=0,
-        bidirectional=False,
-    ):
-        """
-        """
-        super().__init__()
-
-        self.num_layers = num_layers
-        self.hidden_size = hidden_size
-        if bidirectional:
-            self.D = 2
-        else:
-            self.D = 1
-
-        self.lstm = nn.LSTM(
-            input_size,
-            hidden_size,
-            num_layers,
-            batch_first=True,
-            dropout=dropout,
-            bidirectional=bidirectional,
-        )
-        # self.fc = nn.Linear()
-
-    def forward(self, w1: torch.Tensor, w2_plus: torch.Tensor):
-        """
-        Input:
-            w1: N, 512 -- hidden
-            w2: N, 14, 512 -- input sequence
-        Output:
-            mask: N, 14, 512 [binary or (0, 1)]
-            w1.repeat(1, 14, 1) * mask + w2 * (1-mask)
-        """
-        h0 = w1.unsqueeze(0).repeat(
-            self.num_layers * self.D, 1, 1
-        )  # num_layers, N, 512
-        c0 = torch.zeros(
-            self.num_layers * self.D, w1.size(0), self.hidden_size, device=w1.device
-        )
-
-        out, _ = self.lstm(w2_plus, (h0, c0))
-        return out
-
-    def forward2(self, w1_plus, w2_plus):
-        """
-        Input:
-            w1: N, 14, 512 
-            w2: N, 14, 512 
-            w=cat(w1, w2) [N, 14, 1024] -- input sequence with random hidden
-        Output:
-            mask: N, 14, 512 [binary or (0, 1)] -- return sequence
-            w1 * mask + w2 * (1-mask)
-        """
-        bs = w1_plus.size(0)
-        w_cat = torch.cat((w1_plus, w2_plus), dim=2)  # [N, 14, 1024]
-        h0 = torch.zeros(
-            self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device
-        )
-        c0 = torch.zeros(
-            self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device
-        )
-
-        out, _ = self.lstm(w_cat, (h0, c0))
-        return out
-
-
-class MaskModelGRU(nn.Module):
-    def __init__(
-        self,
-        input_size=512,
-        hidden_size=512,
-        num_layers=2,
-        dropout=0,
-        bidirectional=False,
-    ) -> None:
-        """
-            net: GRU 14
-        """
-        super().__init__()
-        self.num_layers = num_layers
-        self.hidden_size = hidden_size
-        if bidirectional:
-            self.D = 2
-        else:
-            self.D = 1
-
-        self.gru = nn.GRU(
-            input_size,
-            hidden_size,
-            num_layers,
-            batch_first=True,
-            dropout=dropout,
-            bidirectional=bidirectional,
-        )
-
-    def forward(self, w1: torch.Tensor, w2_plus: torch.Tensor):
-        """
-        Input:
-            w1: N, 512 -- hidden
-            w2: N, 14, 512 -- input sequence
-        Output:
-            mask: N, 14, 512 [binary or (0, 1)]
-            w1.repeat(1, 14, 1) * mask + w2 * (1-mask)
-        """
-        h0 = w1.unsqueeze(0).repeat(
-            self.num_layers * self.D, 1, 1
-        )  # num_layers, N, 512
-
-        out, _ = self.gru(w2_plus, h0)
-        return out
-
-    def forward2(self, w1_plus, w2_plus):
-        """
-        Input:
-            w1: N, 14, 512 
-            w2: N, 14, 512 
-            w=cat(w1, w2) [N, 14, 1024] -- input sequence with random hidden
-        Output:
-            mask: N, 14, 512 [binary or (0, 1)] -- return sequence
-            w1 * mask + w2 * (1-mask)
-        """
-        bs = w1_plus.size(0)
-        w_cat = torch.cat((w1_plus, w2_plus), dim=2)  # [N, 14, 1024]
-        h0 = torch.zeros(
-            self.num_layers * self.D, bs, self.hidden_size, device=w1_plus.device
-        )
-
-        out, _ = self.gru(w_cat, h0)
-        return out
-
-
 class Highway(nn.Module):
-    def __init__(self, size, num_layers, act="relu"):
+    def __init__(self, size, num_layers, act="relu", momentum=0.1):
 
         super(Highway, self).__init__()
 
@@ -260,7 +126,7 @@ class Highway(nn.Module):
         self.nonlinear = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(size, size),
-                nn.BatchNorm1d(size)
+                nn.BatchNorm1d(size, momentum=momentum)
             ) for _ in range(num_layers)])
         self.linear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
         self.gate = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
