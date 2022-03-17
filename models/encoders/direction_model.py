@@ -156,11 +156,11 @@ class Highway(nn.Module):
 
 
 class MaskHighway(nn.Module):
-    def __init__(self, size=256, n_latent=18, num_layers=5, act="relu"):
+    def __init__(self, size=256, n_latent=18, num_layers=5, act="relu", momentum=0.1):
         super().__init__()
         self.fc1s = nn.ModuleList([nn.Linear(1024, size) for _ in range(n_latent)])
         self.fc2s = nn.ModuleList([nn.Linear(size, 512) for _ in range(n_latent)])
-        self.highways = nn.ModuleList([Highway(size, num_layers, act=act) for _ in range(n_latent)])
+        self.highways = nn.ModuleList([Highway(size, num_layers, act=act, momentum=momentum) for _ in range(n_latent)])
 
     def forward(self, w1, w2):
         w_cat = torch.cat((w1, w2), dim=2)
