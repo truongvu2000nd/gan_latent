@@ -78,7 +78,6 @@ class ArcFaceLoss(nn.Module):
             input_size=112, num_layers=50, drop_ratio=0.6, mode="ir_se"
         )
         self.facenet.load_state_dict(torch.load(model_paths["ir_se50"]))
-        self.face_pool = torch.nn.AdaptiveAvgPool2d((112, 112))
         self.facenet.eval()
         self.mtcnn = MTCNN(image_size=112, device=device)
 
@@ -92,8 +91,7 @@ class ArcFaceLoss(nn.Module):
             out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
             outs.append(out)
         outs = torch.cat(outs, dim=0)
-        x = self.face_pool(outs)
-        x_feats = self.facenet(x)
+        x_feats = self.facenet(outs)
         return x_feats
 
     def forward(self, x, y):
@@ -107,7 +105,6 @@ class CircularFaceLoss(nn.Module):
         super(CircularFaceLoss, self).__init__()
         self.facenet = IR_101(input_size=112)
         self.facenet.load_state_dict(torch.load(model_paths["circular_face"]))
-        self.face_pool = torch.nn.AdaptiveAvgPool2d((112, 112))
         self.facenet.eval()
         self.mtcnn = MTCNN(image_size=112, device=device)
 
@@ -121,8 +118,7 @@ class CircularFaceLoss(nn.Module):
             out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
             outs.append(out)
         outs = torch.cat(outs, dim=0)
-        x = self.face_pool(outs)
-        x_feats = self.facenet(x)
+        x_feats = self.facenet(outs)
         return x_feats
 
     def forward(self, x, y):
