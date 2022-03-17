@@ -83,7 +83,7 @@ class ArcFaceLoss(nn.Module):
         self.mtcnn = MTCNN(image_size=112, device=device)
 
     def extract_feats(self, imgs):
-        x = (imgs.permute(0, 2, 3, 1) * 255).long()
+        x = (((imgs+1)*0.5).permute(0, 2, 3, 1) * 255).long()
         batch_boxes , _ = self.mtcnn.detect(x)
         outs = []
         for img, box in zip(imgs, batch_boxes):
@@ -112,7 +112,7 @@ class CircularFaceLoss(nn.Module):
         self.mtcnn = MTCNN(image_size=112, device=device)
 
     def extract_feats(self, imgs):
-        x = (imgs.permute(0, 2, 3, 1) * 255).long()
+        x = (((imgs+1)*0.5).permute(0, 2, 3, 1) * 255).long()
         batch_boxes , _ = self.mtcnn.detect(x)
         outs = []
         for img, box in zip(imgs, batch_boxes):
