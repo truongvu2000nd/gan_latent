@@ -87,12 +87,14 @@ class ArcFaceLoss(nn.Module):
         outs, outs_bg = [], []
         for img, box in zip(imgs, batch_boxes):
             box = box[0].astype("int")
-            img = img[:, box[1]:box[3], box[0]:box[2]]
+            
             img_bg = img.clone()
             img_bg[:, box[1]:box[3], box[0]:box[2]].zero_()
+            outs_bg.append(img_bg)
+
+            img = img[:, box[1]:box[3], box[0]:box[2]]
             out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
             outs.append(out)
-            outs_bg.append(img_bg)
         outs = torch.cat(outs, dim=0)
         outs_bg = torch.cat(outs_bg, dim=0)
         return outs, outs_bg
@@ -123,12 +125,14 @@ class CircularFaceLoss(nn.Module):
         outs, outs_bg = [], []
         for img, box in zip(imgs, batch_boxes):
             box = box[0].astype("int")
-            img = img[:, box[1]:box[3], box[0]:box[2]]
+
             img_bg = img.clone()
             img_bg[:, box[1]:box[3], box[0]:box[2]].zero_()
+            outs_bg.append(img_bg)
+
+            img = img[:, box[1]:box[3], box[0]:box[2]]
             out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
             outs.append(out)
-            outs_bg.append(img_bg)
         outs = torch.cat(outs, dim=0)
         outs_bg = torch.cat(outs_bg, dim=0)
         return outs, outs_bg
