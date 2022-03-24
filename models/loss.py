@@ -147,3 +147,27 @@ class CircularFaceLoss(nn.Module):
         x_feats = self.extract_feats(x)
         y_feats = self.extract_feats(y)
         return F.cosine_similarity(x_feats, y_feats)
+
+
+class BatchMTCNN(nn.Module):
+    def __init__(self, device="cpu"):
+        super(CircularFaceLoss, self).__init__()
+        self.mtcnn = MTCNN(image_size=112, device=device)
+
+    def forward(self, imgs):
+        x = (((imgs+1)*0.5).permute(0, 2, 3, 1) * 255).long()
+        batch_boxes , _ = self.mtcnn.detect(x)
+        outs, outs_bg = [], []
+        for img, box in zip(imgs, batch_boxes):
+            box = box[0].astype("int")
+
+            img_bg = img.clone()
+            img_bg[:, box[1]:box[3], box[0]:box[2]].zero_()
+            outs_bg.append(img_bg)
+
+            img = img[:, box[1]:box[3], box[0]:box[2]]
+            out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
+            outs.append(out)
+        outs = torch.cat(outs, dim=0)
+        outs_bg = torch.cat(outs_bg, dim=0)
+        return outs, outs_bg
