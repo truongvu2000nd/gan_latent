@@ -151,7 +151,7 @@ class CircularFaceLoss(nn.Module):
 
 class BatchMTCNN(nn.Module):
     def __init__(self, device="cpu"):
-        super(CircularFaceLoss, self).__init__()
+        super(BatchMTCNN, self).__init__()
         self.mtcnn = MTCNN(image_size=112, device=device)
 
     def forward(self, imgs):
