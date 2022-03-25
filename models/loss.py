@@ -111,50 +111,12 @@ class ArcFaceLoss(nn.Module):
         return F.cosine_similarity(x_feats, y_feats)
 
 
-class CircularFaceLoss(nn.Module):
-    def __init__(self, device="cpu"):
-        super(CircularFaceLoss, self).__init__()
-        self.facenet = IR_101(input_size=112)
-        self.facenet.load_state_dict(torch.load(model_paths["circular_face"]))
-        self.facenet.eval()
-        self.mtcnn = MTCNN(image_size=112, device=device)
-
-    def extract_imgs(self, imgs):
-        x = (((imgs+1)*0.5).permute(0, 2, 3, 1) * 255).long()
-        batch_boxes , _ = self.mtcnn.detect(x)
-        outs, outs_bg = [], []
-        for img, box in zip(imgs, batch_boxes):
-            box = box[0].astype("int")
-
-            img_bg = img.clone()
-            img_bg[:, box[1]:box[3], box[0]:box[2]].zero_()
-            outs_bg.append(img_bg)
-
-            img = img[:, box[1]:box[3], box[0]:box[2]]
-            out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
-            outs.append(out)
-        outs = torch.cat(outs, dim=0)
-        outs_bg = torch.cat(outs_bg, dim=0)
-        return outs, outs_bg
-
-    def extract_feats(self, imgs):
-        x_feats = self.facenet(imgs)
-        return x_feats
-
-    def forward(self, x, y):
-        x, _ = self.extract_imgs(x)
-        y, _ = self.extract_imgs(y)
-        x_feats = self.extract_feats(x)
-        y_feats = self.extract_feats(y)
-        return F.cosine_similarity(x_feats, y_feats)
-
-
 class BatchMTCNN(nn.Module):
     def __init__(self, device="cpu"):
         super(BatchMTCNN, self).__init__()
         self.mtcnn = MTCNN(image_size=112, device=device)
 
-    def forward(self, imgs):
+    def forward(self, imgs, img_size=112):
         x = (((imgs+1)*0.5).permute(0, 2, 3, 1) * 255).long()
         batch_boxes , _ = self.mtcnn.detect(x)
         outs, outs_bg = [], []
@@ -166,7 +128,7 @@ class BatchMTCNN(nn.Module):
             outs_bg.append(img_bg)
 
             img = img[:, box[1]:box[3], box[0]:box[2]]
-            out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
+            out = F.interpolate(img.unsqueeze(0), size=(img_size, img_size), mode="area")
             outs.append(out)
         outs = torch.cat(outs, dim=0)
         outs_bg = torch.cat(outs_bg, dim=0)
