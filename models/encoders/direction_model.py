@@ -54,24 +54,13 @@ def create_mlp(
     return torch.nn.Sequential(OrderedDict(layers))
 
 
-class FixedMaskModel(nn.Module):
-    def __init__(self, size=512):
-        super().__init__()
-        self.size = size
-        self.mask = nn.Parameter(torch.zeros(size), requires_grad=True)
-        nn.init.uniform_(self.mask)
-
-    def forward(self, w1, w2):
-        return w1 * self.mask + w2 * (1 - self.mask)
-
-
 class MaskModel(nn.Module):
     def __init__(self, size=512, depth=3, bias=True, batchnorm=False, final_norm=False):
         super().__init__()
         self.size = size
         self.net = create_mlp(
             depth=depth,
-            in_features=size * 2,
+            in_features=size,
             middle_features=size,
             out_features=size,
             bias=bias,
@@ -79,8 +68,8 @@ class MaskModel(nn.Module):
             final_norm=final_norm,
         )
 
-    def forward(self, w1, w2):
-        return torch.sigmoid(self.net(torch.cat((w1, w2), dim=1)))
+    def forward(self, w):
+        return torch.sigmoid(self.net(w))
 
 
 class WPlusMaskModel(nn.Module):
@@ -100,7 +89,7 @@ class WPlusMaskModel(nn.Module):
 
         self.net = create_mlp(
             depth=depth,
-            in_features=size * n_latent * 2,
+            in_features=size * n_latent,
             middle_features=size,
             out_features=size * n_latent,
             bias=bias,
@@ -109,10 +98,10 @@ class WPlusMaskModel(nn.Module):
             final_norm=final_norm,
         )
 
-    def forward(self, w1, w2):
+    def forward(self, w):
         # return mask
-        bs, _, _ = w1.size()
-        return torch.sigmoid(self.net(torch.cat((w1, w2), dim=1).view(bs, -1))).view(
+        bs, _, _ = w.size()
+        return torch.sigmoid(self.net(w.view(bs, -1))).view(
             bs, self.n_latent, self.size
         )
 
@@ -158,15 +147,14 @@ class Highway(nn.Module):
 class MaskHighway(nn.Module):
     def __init__(self, size=256, n_latent=18, num_layers=5, act="relu", momentum=0.1):
         super().__init__()
-        self.fc1s = nn.ModuleList([nn.Linear(1024, size) for _ in range(n_latent)])
+        self.fc1s = nn.ModuleList([nn.Linear(512, size) for _ in range(n_latent)])
         self.fc2s = nn.ModuleList([nn.Linear(size, 512) for _ in range(n_latent)])
         self.highways = nn.ModuleList([Highway(size, num_layers, act=act, momentum=momentum) for _ in range(n_latent)])
 
-    def forward(self, w1, w2):
-        w_cat = torch.cat((w1, w2), dim=2)
+    def forward(self, w):
         mask = []
-        for i in range(w_cat.size(1)):
-            out = self.fc1s[i](w_cat[:, i])
+        for i in range(w.size(1)):
+            out = self.fc1s[i](w[:, i])
             out = self.highways[i](out)
             out = self.fc2s[i](out)
             mask.append(out.unsqueeze(1))
@@ -177,6 +165,3 @@ class MaskHighway(nn.Module):
 if __name__ == "__main__":
     from torchinfo import summary
 
-    w1, w2 = torch.randn(1, 18, 512), torch.randn(1, 18, 512)
-    model = MaskHighway(num_layers=3, act="lrelu")
-    summary(model, input_size=[(1,18,512), (1,18,512)])
