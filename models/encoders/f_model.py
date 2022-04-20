@@ -31,7 +31,12 @@ def create_mlp(
     for i in range(depth - 1):
         if batchnorm:
             layers.append(
-                (f"batchnorm_{i+1}", torch.nn.BatchNorm1d(num_features=middle_features, momentum=momentum))
+                (
+                    f"batchnorm_{i+1}",
+                    torch.nn.BatchNorm1d(
+                        num_features=middle_features, momentum=momentum
+                    ),
+                )
             )
         layers.append((f"relu_{i+1}", torch.nn.ReLU()))
         layers.append(
@@ -47,7 +52,10 @@ def create_mlp(
 
     if final_norm:
         layers.append(
-            (f"batchnorm_{depth}", torch.nn.BatchNorm1d(num_features=out_features, momentum=momentum))
+            (
+                f"batchnorm_{depth}",
+                torch.nn.BatchNorm1d(num_features=out_features, momentum=momentum),
+            )
         )
 
     # return network
@@ -105,18 +113,34 @@ class WPlusFModel(nn.Module):
 
 
 class Highway(nn.Module):
-    def __init__(self, size, num_layers, act="relu", momentum=0.1):
+    def __init__(self, size, num_layers, act="relu", momentum=0.1, share_weights=False):
 
         super(Highway, self).__init__()
 
         self.num_layers = num_layers
-        self.nonlinear = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(size, size),
-                nn.BatchNorm1d(size, momentum=momentum)
-            ) for _ in range(num_layers)])
-        self.linear = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
-        self.gate = nn.ModuleList([nn.Linear(size, size) for _ in range(num_layers)])
+        self.share_weights = share_weights
+        if share_weights:
+            self.nonlinear = nn.Sequential(
+                nn.Linear(size, size), nn.BatchNorm1d(size, momentum=momentum)
+            )
+            self.linear = nn.Linear(size, size)
+            self.gate = nn.Linear(size, size)
+        else:
+            self.nonlinear = nn.ModuleList(
+                [
+                    nn.Sequential(
+                        nn.Linear(size, size), nn.BatchNorm1d(size, momentum=momentum)
+                    )
+                    for _ in range(num_layers)
+                ]
+            )
+            self.linear = nn.ModuleList(
+                [nn.Linear(size, size) for _ in range(num_layers)]
+            )
+            self.gate = nn.ModuleList(
+                [nn.Linear(size, size) for _ in range(num_layers)]
+            )
+
         if act == "relu":
             self.act = nn.ReLU()
         elif act == "lrelu":
@@ -132,6 +156,14 @@ class Highway(nn.Module):
             f is non-linear transformation, σ(x) is affine transformation with sigmoid non-linearition
             and ⨀ is element-wise multiplication
             """
+        if self.share_weights:
+            for _ in range(self.num_layers):
+                gate = torch.sigmoid(self.gate(x))
+                nonlinear = self.act(self.nonlinear(x))
+                linear = self.linear(x)
+                x = gate * nonlinear + (1 - gate) * linear
+
+            return x
 
         for layer in range(self.num_layers):
             gate = torch.sigmoid(self.gate[layer](x))
@@ -143,11 +175,30 @@ class Highway(nn.Module):
 
 
 class FHighway(nn.Module):
-    def __init__(self, size=256, n_latent=18, num_layers=5, act="relu", momentum=0.1):
+    def __init__(
+        self,
+        size=256,
+        n_latent=18,
+        num_layers=5,
+        act="relu",
+        momentum=0.1,
+        share_weights=False,
+    ):
         super().__init__()
         self.fc1s = nn.ModuleList([nn.Linear(512, size) for _ in range(n_latent)])
         self.fc2s = nn.ModuleList([nn.Linear(size, 512) for _ in range(n_latent)])
-        self.highways = nn.ModuleList([Highway(size, num_layers, act=act, momentum=momentum) for _ in range(n_latent)])
+        self.highways = nn.ModuleList(
+            [
+                Highway(
+                    size,
+                    num_layers,
+                    act=act,
+                    momentum=momentum,
+                    share_weights=share_weights,
+                )
+                for _ in range(n_latent)
+            ]
+        )
 
     def forward(self, w):
         outputs = []
@@ -162,4 +213,5 @@ class FHighway(nn.Module):
 
 if __name__ == "__main__":
     from torchinfo import summary
-
+    model = FHighway(size=256, n_latent=18, num_layers=7, act="lrelu", share_weights=False)
+    summary(model, (1, 18, 512))
