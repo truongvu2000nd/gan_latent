@@ -146,7 +146,7 @@ class SupConLoss(nn.Module):
         mean_log_prob_pos = (mask * log_prob).sum(1) / mask.sum(1)
 
         # loss
-        loss = mean_log_prob_pos.view(anchor_count, batch_size).mean()
+        loss = - mean_log_prob_pos.view(anchor_count, batch_size).mean()
 
         return loss
 
