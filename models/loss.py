@@ -68,12 +68,13 @@ class ContrastiveLoss(nn.Module):
 class SupConLoss(nn.Module):
     """Supervised Contrastive Learning: https://arxiv.org/pdf/2004.11362.pdf.
     It also supports the unsupervised contrastive loss in SimCLR"""
-    def __init__(self, temperature=0.1, contrast_mode='all'):
+
+    def __init__(self, temperature=0.1, contrast_mode="all"):
         super(SupConLoss, self).__init__()
         self.temperature = temperature
         self.contrast_mode = contrast_mode
 
-    def forward(self, features, labels=None, mask=None):
+    def forward(self, features, labels=None, mask=None, normalize=True):
         """Compute loss for model. If both `labels` and `mask` are None,
         it degenerates to SimCLR unsupervised loss:
         https://arxiv.org/pdf/2002.05709.pdf
@@ -85,44 +86,46 @@ class SupConLoss(nn.Module):
         Returns:
             A loss scalar.
         """
-        device = (torch.device('cuda')
-                  if features.is_cuda
-                  else torch.device('cpu'))
+        device = torch.device("cuda") if features.is_cuda else torch.device("cpu")
+        if normalize:
+            features = F.normalize(features, dim=2)
 
         if len(features.shape) < 3:
-            raise ValueError('`features` needs to be [bsz, n_views, ...],'
-                             'at least 3 dimensions are required')
+            raise ValueError(
+                "`features` needs to be [bsz, n_views, ...],"
+                "at least 3 dimensions are required"
+            )
         if len(features.shape) > 3:
             features = features.view(features.shape[0], features.shape[1], -1)
 
         batch_size = features.shape[0]
         if labels is not None and mask is not None:
-            raise ValueError('Cannot define both `labels` and `mask`')
+            raise ValueError("Cannot define both `labels` and `mask`")
         elif labels is None and mask is None:
             mask = torch.eye(batch_size, dtype=torch.float32).to(device)
         elif labels is not None:
             labels = labels.contiguous().view(-1, 1)
             if labels.shape[0] != batch_size:
-                raise ValueError('Num of labels does not match num of features')
+                raise ValueError("Num of labels does not match num of features")
             mask = torch.eq(labels, labels.T).float().to(device)
         else:
             mask = mask.float().to(device)
 
         contrast_count = features.shape[1]
         contrast_feature = torch.cat(torch.unbind(features, dim=1), dim=0)
-        if self.contrast_mode == 'one':
+        if self.contrast_mode == "one":
             anchor_feature = features[:, 0]
             anchor_count = 1
-        elif self.contrast_mode == 'all':
+        elif self.contrast_mode == "all":
             anchor_feature = contrast_feature
             anchor_count = contrast_count
         else:
-            raise ValueError('Unknown mode: {}'.format(self.contrast_mode))
+            raise ValueError("Unknown mode: {}".format(self.contrast_mode))
 
         # compute logits
         anchor_dot_contrast = torch.div(
-            torch.matmul(anchor_feature, contrast_feature.T),
-            self.temperature)
+            torch.matmul(anchor_feature, contrast_feature.T), self.temperature
+        )
         # for numerical stability
         logits_max, _ = torch.max(anchor_dot_contrast, dim=1, keepdim=True)
         logits = anchor_dot_contrast - logits_max.detach()
@@ -134,7 +137,7 @@ class SupConLoss(nn.Module):
             torch.ones_like(mask),
             1,
             torch.arange(batch_size * anchor_count).view(-1, 1).to(device),
-            0
+            0,
         )
         mask = mask * logits_mask
 
@@ -146,7 +149,7 @@ class SupConLoss(nn.Module):
         mean_log_prob_pos = (mask * log_prob).sum(1) / mask.sum(1)
 
         # loss
-        loss = - mean_log_prob_pos.view(anchor_count, batch_size).mean()
+        loss = -mean_log_prob_pos.view(anchor_count, batch_size).mean()
 
         return loss
 
@@ -163,13 +166,17 @@ class SupConLossWithMB(nn.Module):
         self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(self, feature1, feature_dir, feature2, n_rep=0, normalize=True):
+        device = torch.device("cuda") if feature1.is_cuda else torch.device("cpu")
+
         if normalize:
             feature1 = F.normalize(feature1, dim=1)
             feature2 = F.normalize(feature2, dim=1)
             feature_dir = F.normalize(feature_dir, dim=1)
 
         batch_size = feature1.size(0)
-        self.queue = torch.cat([feature2, self.queue[:self.queue.size(0) - feature2.size(0)]], dim=0)
+        self.queue = torch.cat(
+            [feature2, self.queue[: self.queue.size(0) - feature2.size(0)]], dim=0
+        )
         # compute logits
         l_pos = torch.matmul(feature_dir, feature1.T)
         l_neg = torch.matmul(feature_dir, self.queue.T.clone().detach())
@@ -177,16 +184,21 @@ class SupConLossWithMB(nn.Module):
         logits = torch.cat([l_pos, l_neg], dim=1)
         logits /= self.temperature
 
-        mask_index = torch.cat([torch.arange(i * batch_size, i * batch_size + batch_size).unsqueeze(1) for i in range(n_rep + 1)], dim=1)
-        mask = torch.scatter(
-            torch.zeros((batch_size, batch_size + self.bank_size)),
-            1,
-            mask_index,
-            1
+        mask_index = torch.cat(
+            [
+                torch.arange(
+                    i * batch_size * 2, i * batch_size * 2 + batch_size
+                ).unsqueeze(1)
+                for i in range(n_rep + 1)
+            ],
+            dim=1,
         )
+        mask = torch.scatter(
+            torch.zeros((batch_size, batch_size + self.bank_size)), 1, mask_index, 1
+        ).to(device)
 
         loss = self.criterion(logits, mask)
-        self.queue = torch.cat([feature_dir, self.queue[:-feature_dir.size(0)]], dim=0)
+        self.queue = torch.cat([feature_dir, self.queue[: -feature_dir.size(0)]], dim=0)
 
         return loss
 
@@ -202,17 +214,17 @@ class ArcFaceLoss(nn.Module):
         self.mtcnn = MTCNN(image_size=112, device=device)
 
     def extract_imgs(self, imgs):
-        x = (((imgs+1)*0.5).permute(0, 2, 3, 1) * 255).long()
-        batch_boxes , _ = self.mtcnn.detect(x)
+        x = (((imgs + 1) * 0.5).permute(0, 2, 3, 1) * 255).long()
+        batch_boxes, _ = self.mtcnn.detect(x)
         outs, outs_bg = [], []
         for img, box in zip(imgs, batch_boxes):
             box = box[0].astype("int")
-            
+
             img_bg = img.clone()
-            img_bg[:, box[1]:box[3], box[0]:box[2]].zero_()
+            img_bg[:, box[1] : box[3], box[0] : box[2]].zero_()
             outs_bg.append(img_bg)
 
-            img = img[:, box[1]:box[3], box[0]:box[2]]
+            img = img[:, box[1] : box[3], box[0] : box[2]]
             out = F.interpolate(img.unsqueeze(0), size=(112, 112), mode="area")
             outs.append(out)
         outs = torch.cat(outs, dim=0)
@@ -237,25 +249,27 @@ class BatchMTCNN(nn.Module):
         self.mtcnn = MTCNN(image_size=112, device=device)
 
     def forward(self, imgs, img_size=112):
-        x = (((imgs+1)*0.5).permute(0, 2, 3, 1) * 255).long()
-        batch_boxes , _ = self.mtcnn.detect(x)
+        x = (((imgs + 1) * 0.5).permute(0, 2, 3, 1) * 255).long()
+        batch_boxes, _ = self.mtcnn.detect(x)
         outs, outs_bg = [], []
         for img, box in zip(imgs, batch_boxes):
             box = box[0].astype("int")
 
             img_bg = img.clone()
-            img_bg[:, box[1]:box[3], box[0]:box[2]].zero_()
+            img_bg[:, box[1] : box[3], box[0] : box[2]].zero_()
             outs_bg.append(img_bg)
 
-            img = img[:, box[1]:box[3], box[0]:box[2]]
-            out = F.interpolate(img.unsqueeze(0), size=(img_size, img_size), mode="area")
+            img = img[:, box[1] : box[3], box[0] : box[2]]
+            out = F.interpolate(
+                img.unsqueeze(0), size=(img_size, img_size), mode="area"
+            )
             outs.append(out)
         outs = torch.cat(outs, dim=0)
         outs_bg = torch.cat(outs_bg, dim=0)
         return outs, outs_bg
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     loss = SupConLossWithMB(bank_size=10, dim=4)
     x1 = torch.randn(4, 4)
     x2 = torch.randn(4, 4)
