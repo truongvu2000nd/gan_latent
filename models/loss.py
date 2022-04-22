@@ -151,6 +151,46 @@ class SupConLoss(nn.Module):
         return loss
 
 
+class SupConLossWithMB(nn.Module):
+    def __init__(self, temperature=0.1, dim=512, bank_size=512):
+        super(SupConLossWithMB, self).__init__()
+        self.temperature = temperature
+
+        self.dim = dim
+        self.bank_size = bank_size
+        self.register_buffer("queue", torch.randn(self.bank_size, self.dim))
+        self.queue = nn.functional.normalize(self.queue, dim=0)
+        self.criterion = nn.BCEWithLogitsLoss()
+
+    def forward(self, feature1, feature_dir, feature2, n_rep=0, normalize=True):
+        if normalize:
+            feature1 = F.normalize(feature1, dim=1)
+            feature2 = F.normalize(feature2, dim=1)
+            feature_dir = F.normalize(feature_dir, dim=1)
+
+        batch_size = feature1.size(0)
+        self.queue = torch.cat([feature2, self.queue[:self.queue.size(0) - feature2.size(0)]], dim=0)
+        # compute logits
+        l_pos = torch.matmul(feature_dir, feature1.T)
+        l_neg = torch.matmul(feature_dir, self.queue.T.clone().detach())
+
+        logits = torch.cat([l_pos, l_neg], dim=1)
+        logits /= self.temperature
+
+        mask_index = torch.cat([torch.arange(i * batch_size, i * batch_size + batch_size).unsqueeze(1) for i in range(n_rep + 1)], dim=1)
+        mask = torch.scatter(
+            torch.zeros((batch_size, batch_size + self.bank_size)),
+            1,
+            mask_index,
+            1
+        )
+
+        loss = self.criterion(logits, mask)
+        self.queue = torch.cat([feature_dir, self.queue[:-feature_dir.size(0)]], dim=0)
+
+        return loss
+
+
 class ArcFaceLoss(nn.Module):
     def __init__(self, device="cpu"):
         super(ArcFaceLoss, self).__init__()
@@ -213,3 +253,12 @@ class BatchMTCNN(nn.Module):
         outs = torch.cat(outs, dim=0)
         outs_bg = torch.cat(outs_bg, dim=0)
         return outs, outs_bg
+
+
+if __name__ == '__main__':
+    loss = SupConLossWithMB(bank_size=10, dim=4)
+    x1 = torch.randn(4, 4)
+    x2 = torch.randn(4, 4)
+    x3 = torch.randn(4, 4)
+    # x = F.normalize(x, dim=2)
+    print(loss(x1, x2, x3, n_rep=1))
