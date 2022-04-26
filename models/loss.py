@@ -140,6 +140,8 @@ class SupConLoss(nn.Module):
             0,
         )
         mask = mask * logits_mask
+        print(mask)
+        print(logits_mask)
 
         # compute log_prob
         exp_logits = torch.exp(logits) * logits_mask
@@ -165,7 +167,7 @@ class SupConLossWithMB(nn.Module):
             self.register_buffer("queue", init_queue)
         else:
             self.register_buffer("queue", torch.randn(self.bank_size, self.dim))
-        self.queue = nn.functional.normalize(self.queue, dim=0)
+        self.queue = nn.functional.normalize(self.queue, dim=1)
         self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(self, feature1, feature_dir, nrep=0, normalize=True):
@@ -194,7 +196,12 @@ class SupConLossWithMB(nn.Module):
             torch.zeros_like(logits), 1, mask_index, 1
         )
 
-        loss = self.criterion(logits, mask)
+        log_prob = F.log_softmax(logits, dim=1)
+
+        # compute mean of log-likelihood over positive
+        mean_log_prob_pos = (mask * log_prob).sum(1) / mask.sum(1)
+        # loss
+        loss = -mean_log_prob_pos.mean()
 
         with torch.no_grad():
             self.queue[batch_size:] = self.queue[:-batch_size].clone()
@@ -275,4 +282,12 @@ if __name__ == "__main__":
     x2 = torch.randn(4, 4)
     x3 = torch.randn(4, 4)
     # x = F.normalize(x, dim=2)
-    print(loss(x1, x2, x3, n_rep=1))
+    loss1, loss2 = loss(x1, x1, nrep=1)
+    print(loss1 / loss2)
+    loss1, loss2 = loss(x2, x3, nrep=1)
+    print(loss1 / loss2)
+
+    # loss = SupConLoss()
+
+    # x1 = torch.randn(4, 2, 5)
+    # loss(x1)
