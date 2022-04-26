@@ -168,7 +168,7 @@ class SupConLossWithMB(nn.Module):
         self.queue = nn.functional.normalize(self.queue, dim=0)
         self.criterion = nn.BCEWithLogitsLoss()
 
-    def forward(self, feature1, feature_dir, n_rep=0, normalize=True):
+    def forward(self, feature1, feature_dir, nrep=0, normalize=True):
         device = torch.device("cuda") if feature1.is_cuda else torch.device("cpu")
 
         if normalize:
@@ -183,18 +183,16 @@ class SupConLossWithMB(nn.Module):
         logits = torch.cat([l_pos, l_neg], dim=1)
         logits /= self.temperature
 
-        mask_index = torch.cat(
-            [
-                torch.arange(
-                    i * batch_size, i * batch_size + batch_size
-                ).unsqueeze(1)
-                for i in range(n_rep + 1)
-            ],
-            dim=1,
-        )
+        mask_index = torch.cat([
+            torch.arange(
+                i * batch_size, i * batch_size + batch_size
+            ).unsqueeze(1)
+            for i in range(nrep + 1)
+        ], dim=1).to(device)
+        
         mask = torch.scatter(
             torch.zeros_like(logits), 1, mask_index, 1
-        ).to(device)
+        )
 
         loss = self.criterion(logits, mask)
 
