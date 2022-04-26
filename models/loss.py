@@ -155,29 +155,28 @@ class SupConLoss(nn.Module):
 
 
 class SupConLossWithMB(nn.Module):
-    def __init__(self, temperature=0.1, dim=512, bank_size=512):
+    def __init__(self, temperature=0.1, dim=512, bank_size=512, init_queue=None):
         super(SupConLossWithMB, self).__init__()
         self.temperature = temperature
 
         self.dim = dim
         self.bank_size = bank_size
-        self.register_buffer("queue", torch.randn(self.bank_size, self.dim))
+        if init_queue is not None:
+            self.register_buffer("queue", init_queue)
+        else:
+            self.register_buffer("queue", torch.randn(self.bank_size, self.dim))
         self.queue = nn.functional.normalize(self.queue, dim=0)
         self.criterion = nn.BCEWithLogitsLoss()
 
-    def forward(self, feature1, feature_dir, feature2, n_rep=0, normalize=True):
+    def forward(self, feature1, feature_dir, n_rep=0, normalize=True):
         device = torch.device("cuda") if feature1.is_cuda else torch.device("cpu")
 
         if normalize:
             feature1 = F.normalize(feature1, dim=1)
-            feature2 = F.normalize(feature2, dim=1)
+            # feature2 = F.normalize(feature2, dim=1)
             feature_dir = F.normalize(feature_dir, dim=1)
 
         batch_size = feature1.size(0)
-        self.queue = torch.cat(
-            [feature2, self.queue[: self.queue.size(0) - feature2.size(0)]], dim=0
-        )
-        # compute logits
         l_pos = torch.matmul(feature_dir, feature1.T)
         l_neg = torch.matmul(feature_dir, self.queue.T.clone().detach())
 
@@ -187,18 +186,21 @@ class SupConLossWithMB(nn.Module):
         mask_index = torch.cat(
             [
                 torch.arange(
-                    i * batch_size * 2, i * batch_size * 2 + batch_size
+                    i * batch_size, i * batch_size + batch_size
                 ).unsqueeze(1)
                 for i in range(n_rep + 1)
             ],
             dim=1,
         )
         mask = torch.scatter(
-            torch.zeros((batch_size, batch_size + self.bank_size)), 1, mask_index, 1
+            torch.zeros_like(logits), 1, mask_index, 1
         ).to(device)
 
         loss = self.criterion(logits, mask)
-        self.queue = torch.cat([feature_dir, self.queue[: -feature_dir.size(0)]], dim=0)
+
+        with torch.no_grad():
+            self.queue[batch_size:] = self.queue[:-batch_size].clone()
+            self.queue[:batch_size] = feature_dir
 
         return loss
 
