@@ -63,21 +63,27 @@ def create_mlp(
 
 
 class FModel(nn.Module):
-    def __init__(self, size=512, depth=3, bias=True, batchnorm=False, final_norm=False):
+    def __init__(self, n_latent, size=512, num_layers=2, act="relu", momentum=0.1):
         super().__init__()
         self.size = size
-        self.net = create_mlp(
-            depth=depth,
-            in_features=size,
-            middle_features=size,
-            out_features=size,
-            bias=bias,
-            batchnorm=batchnorm,
-            final_norm=final_norm,
-        )
+
+        self.nets = nn.ModuleList([
+            create_mlp(
+                depth=num_layers,
+                in_features=size,
+                middle_features=size,
+                out_features=size,
+                momentum=momentum,
+            ) for _ in range(n_latent)
+        ])
 
     def forward(self, w):
-        return self.net(w)
+        outputs = []
+        for i in range(w.size(1)):
+            out = self.nets[i](w[:, i])
+            outputs.append(out.unsqueeze(1))
+        outputs = torch.cat(outputs, dim=1)
+        return outputs
 
 
 class WPlusFModel(nn.Module):
@@ -213,5 +219,6 @@ class FHighway(nn.Module):
 
 if __name__ == "__main__":
     from torchinfo import summary
-    model = FHighway(size=256, n_latent=18, num_layers=7, act="lrelu", share_weights=False)
+    # model = FHighway(size=256, n_latent=18, num_layers=7, act="lrelu", share_weights=False)
+    model = FModel(n_latent=18, num_layers=3)
     summary(model, (1, 18, 512))
