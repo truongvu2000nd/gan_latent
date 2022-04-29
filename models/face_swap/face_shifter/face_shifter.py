@@ -8,20 +8,23 @@ import torch.nn.functional as F
 
 
 class FaceShifter(nn.Module):
-    def __init__(self, face_shifter_path=None, arcface_path=None):
+    def __init__(self, faceshifter_path=None, arcface_path=None):
         super().__init__()
 
         self.G = AEI_Net(c_id=512)
         self.G.eval()
-        self.G.load_state_dict(torch.load(face_shifter_path))
+        self.G.load_state_dict(torch.load(faceshifter_path))
 
         self.arcface = Backbone(50, 0.6, 'ir_se')
         self.arcface.eval()
         self.arcface.load_state_dict(torch.load(arcface_path), strict=False)
 
-    def forward(self, x_src, x_tgt):
-        embeds = self.arcface(F.interpolate(x_src[:, :, 19:237, 19:237],
-                             (112, 112), mode='bilinear', align_corners=True))
+    def forward(self, x_src, x_tgt, crop=True):
+        if crop:
+            embeds = self.arcface(F.interpolate(x_src[:, :, 19:237, 19:237],
+                                (112, 112), mode='bilinear', align_corners=True))
+        else:
+            embeds = self.arcface(x_src)
         
         out, _ = self.G(x_tgt, embeds)
         return out
