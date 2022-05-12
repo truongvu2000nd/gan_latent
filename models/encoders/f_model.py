@@ -5,6 +5,10 @@ import numpy as np
 from collections import OrderedDict
 from typing import Union, List
 
+import sys
+sys.path.append("../..")
+from models.stylegan2.model import PixelNorm, EqualLinear
+
 
 def create_mlp(
     depth: int,
@@ -62,20 +66,40 @@ def create_mlp(
     return torch.nn.Sequential(OrderedDict(layers))
 
 
+class Mapper(nn.Module):
+
+    def __init__(self, opts, latent_dim=512):
+        super(Mapper, self).__init__()
+
+        self.opts = opts
+        
+
+    def forward(self, x):
+        x = self.mapping(x)
+        return x
+
+
 class FModel(nn.Module):
-    def __init__(self, n_latent, size=512, num_layers=2, act="relu", momentum=0.1):
+    def __init__(self, n_latent, latent_dim=512, num_layers=2):
         super().__init__()
-        self.size = size
+        self.latent_dim = latent_dim
 
         self.nets = nn.ModuleList([
-            create_mlp(
-                depth=num_layers,
-                in_features=size,
-                middle_features=size,
-                out_features=size,
-                momentum=momentum,
-            ) for _ in range(n_latent)
+            self._make_mapper(num_layers, latent_dim) for _ in range(n_latent)
         ])
+
+    def _make_mapper(self, num_layers=4, latent_dim=512):
+        layers = [PixelNorm()]
+
+        for i in range(num_layers):
+            layers.append(
+                EqualLinear(
+                    latent_dim, latent_dim, lr_mul=0.01, activation='fused_lrelu'
+                )
+            )
+
+        mapping = nn.Sequential(*layers)
+        return mapping
 
     def forward(self, w):
         outputs = []
@@ -219,7 +243,7 @@ class FHighway(nn.Module):
 
 if __name__ == "__main__":
     from torchinfo import summary
-    # model = FHighway(size=256, n_latent=18, num_layers=7, act="lrelu", share_weights=False)
-    model = FModel(n_latent=14, num_layers=2)
+    # model = FHighway(size=512, n_latent=14, num_layers=2, act="lrelu", share_weights=False)
+    model = FModel(n_latent=14, num_layers=4)
     summary(model, (1, 14, 512))
-    print(model)
+    # print(model)

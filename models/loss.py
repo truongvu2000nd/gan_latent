@@ -253,27 +253,33 @@ class ArcFaceLoss(nn.Module):
 class BatchMTCNN(nn.Module):
     def __init__(self, device="cpu"):
         super(BatchMTCNN, self).__init__()
-        self.mtcnn = MTCNN(image_size=112, device=device)
+        self.mtcnn = MTCNN(image_size=112, device=device, select_largest=False)
+        self.device = device
 
-    def forward(self, imgs, img_size=112):
+    def forward(self, imgs, img_size=112, return_masks_bg=True):
         x = (((imgs + 1) * 0.5).permute(0, 2, 3, 1) * 255).long()
         batch_boxes, _ = self.mtcnn.detect(x)
-        outs, outs_bg = [], []
+        outs = []
+        masks_bg = []
         for img, box in zip(imgs, batch_boxes):
             box = box[0].astype("int")
 
-            img_bg = img.clone()
-            img_bg[:, box[1] : box[3], box[0] : box[2]].zero_()
-            outs_bg.append(img_bg)
-
-            img = img[:, box[1] : box[3], box[0] : box[2]]
+            out = img[:, box[1] : box[3], box[0] : box[2]]
             out = F.interpolate(
-                img.unsqueeze(0), size=(img_size, img_size), mode="area"
+                out.unsqueeze(0), size=(img_size, img_size), mode="area"
             )
             outs.append(out)
+
+            mask_bg = torch.ones_like(img).to(self.device)
+            mask_bg[:, box[1] : box[3], box[0] : box[2]].zero_()
+            masks_bg.append(mask_bg)
+
         outs = torch.cat(outs, dim=0)
-        outs_bg = torch.cat(outs_bg, dim=0)
-        return outs, outs_bg
+        masks_bg = torch.cat(masks_bg, dim=0)
+        
+        if return_masks_bg:
+            return outs, masks_bg
+        return outs
 
 
 if __name__ == "__main__":
