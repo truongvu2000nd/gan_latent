@@ -270,7 +270,7 @@ class BatchMTCNN(nn.Module):
             )
             outs.append(out)
 
-            mask_bg = torch.ones((img.size(2), img.size(3))).to(self.device)
+            mask_bg = torch.ones((img.size(1), img.size(2))).to(self.device)
             mask_bg[box[1] : box[3], box[0] : box[2]].zero_()
             masks_bg.append(mask_bg.unsqueeze(0).unsqueeze(0))
 
