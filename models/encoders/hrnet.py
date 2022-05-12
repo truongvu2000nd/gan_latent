@@ -15,6 +15,9 @@ import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math 
+from transforms import transform_preds
+from yacs.config import CfgNode as CN
 
 
 BatchNorm2d = nn.BatchNorm2d
@@ -238,7 +241,7 @@ class HighResolutionModule(nn.Module):
                     y = y + F.interpolate(
                         self.fuse_layers[i][j](x[j]),
                         size=[x[i].shape[2], x[i].shape[3]],
-                        mode='bilinear')
+                        mode='bilinear', align_corners=True)
                 else:
                     y = y + self.fuse_layers[i][j](x[j])
             x_fuse.append(self.relu(y))
@@ -469,18 +472,128 @@ class HighResolutionNet(nn.Module):
 
 
 def get_face_alignment_net(config, **kwargs):
-
     model = HighResolutionNet(config, **kwargs)
     pretrained = config.MODEL.PRETRAINED if config.MODEL.INIT_WEIGHTS else ''
     model.init_weights(pretrained=pretrained)
 
     return model
 
+def get_hr_net(ckpt_path=None):
+    config = CN()
+    config.MODEL = CN()
+    config.MODEL.EXTRA = CN()
+
+    config.MODEL.NUM_JOINTS = 98
+
+    config.MODEL.EXTRA.PRETRAINED_LAYERS = ['*']
+    config.MODEL.EXTRA.STEM_INPLANES = 64
+    config.MODEL.EXTRA.FINAL_CONV_KERNEL = 1
+    config.MODEL.EXTRA.WITH_HEAD = True
+
+    config.MODEL.EXTRA.STAGE2 = CN()
+    config.MODEL.EXTRA.STAGE2.NUM_MODULES = 1
+    config.MODEL.EXTRA.STAGE2.NUM_BRANCHES = 2
+    config.MODEL.EXTRA.STAGE2.NUM_BLOCKS = [4, 4]
+    config.MODEL.EXTRA.STAGE2.NUM_CHANNELS = [18, 36]
+    config.MODEL.EXTRA.STAGE2.BLOCK = 'BASIC'
+    config.MODEL.EXTRA.STAGE2.FUSE_METHOD = 'SUM'
+
+    config.MODEL.EXTRA.STAGE3 = CN()
+    config.MODEL.EXTRA.STAGE3.NUM_MODULES = 4
+    config.MODEL.EXTRA.STAGE3.NUM_BRANCHES = 3
+    config.MODEL.EXTRA.STAGE3.NUM_BLOCKS = [4, 4, 4]
+    config.MODEL.EXTRA.STAGE3.NUM_CHANNELS = [18, 36, 72]
+    config.MODEL.EXTRA.STAGE3.BLOCK = 'BASIC'
+    config.MODEL.EXTRA.STAGE3.FUSE_METHOD = 'SUM'
+
+    config.MODEL.EXTRA.STAGE4 = CN()
+    config.MODEL.EXTRA.STAGE4.NUM_MODULES = 3
+    config.MODEL.EXTRA.STAGE4.NUM_BRANCHES = 4
+    config.MODEL.EXTRA.STAGE4.NUM_BLOCKS = [4, 4, 4, 4]
+    config.MODEL.EXTRA.STAGE4.NUM_CHANNELS = [18, 36, 72, 144]
+    config.MODEL.EXTRA.STAGE4.BLOCK = 'BASIC'
+    config.MODEL.EXTRA.STAGE4.FUSE_METHOD = 'SUM'
+    hr_net = HighResolutionNet(config).eval()
+    if ckpt_path is not None:
+        ckpt = torch.load(ckpt_path, map_location=torch.device('cpu'))
+        hr_net.load_state_dict(ckpt)
+    return hr_net
+
+
+def get_preds(scores):
+    """
+    get predictions from score maps in torch Tensor
+    return type: torch.LongTensor
+    """
+    assert scores.dim() == 4, 'Score maps should be 4-dim'
+    maxval, idx = torch.max(scores.view(scores.size(0), scores.size(1), -1), 2)
+
+    maxval = maxval.view(scores.size(0), scores.size(1), 1)
+    idx = idx.view(scores.size(0), scores.size(1), 1) + 1
+
+    preds = idx.repeat(1, 1, 2).float()
+
+    preds[:, :, 0] = (preds[:, :, 0] - 1) % scores.size(3) + 1
+    preds[:, :, 1] = torch.floor((preds[:, :, 1] - 1) / scores.size(3)) + 1
+
+    pred_mask = maxval.gt(0).repeat(1, 1, 2).float()
+    preds *= pred_mask
+    return preds
+
+
+def decode_preds(output, center, scale, res):
+    coords = get_preds(output)  # float type
+
+    coords = coords.cpu()
+    # pose-processing
+    for n in range(coords.size(0)):
+        for p in range(coords.size(1)):
+            hm = output[n][p]
+            px = int(math.floor(coords[n][p][0]))
+            py = int(math.floor(coords[n][p][1]))
+            if (px > 1) and (px < res[0]) and (py > 1) and (py < res[1]):
+                diff = torch.Tensor([hm[py - 1][px] - hm[py - 1][px - 2], hm[py][px - 1]-hm[py - 2][px - 1]])
+                coords[n][p] += diff.sign() * .25
+    coords += 0.5
+    preds = coords.clone()
+
+    # Transform back
+    for i in range(coords.size(0)):
+        preds[i] = transform_preds(coords[i], center[i], scale[i], res)
+
+    if preds.dim() < 3:
+        preds = preds.view(1, preds.size())
+
+    return preds
+
+    
 
 if __name__ == '__main__':
     from torchinfo import summary   
-    model = HighResolutionNet()
-    # Load snapshot
-    # saved_state_dict = torch.load("/mnt/D4AEE2D5AEE2AF64/ML-DS/GANs/gan_latent/pretrained/hopenet_alpha1.pkl", map_location="cpu")
-    # print(model.load_state_dict(saved_state_dict))
-    summary(model, (1, 3, 256, 256))
+    import torch
+    import torch.nn.functional as F
+    import torchvision.transforms as transforms
+    import torchvision.transforms.functional as TF
+    from torchvision.utils import draw_keypoints
+    import matplotlib.pyplot as plt
+    from PIL import Image
+
+    img = Image.open("/mnt/D4AEE2D5AEE2AF64/ML-DS/GANs/datasets/1.jpg")
+    img_transform = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
+
+    img_tensor = img_transform(img).unsqueeze(0)
+    print(img_tensor.size())
+    model = get_hr_net("/mnt/D4AEE2D5AEE2AF64/ML-DS/GANs/gan_latent/pretrained/HR18-WFLW.pth")
+    # summary(model, input_data=img_tensor)
+    print(model)
+    # out = model(img_tensor)
+    # print(out.size())
+    # preds = get_preds(out)
+    # img = F.interpolate(TF.pil_to_tensor(img).unsqueeze(0), (64, 64)).squeeze(0)
+    # new_img = draw_keypoints(img, preds, colors="red", radius=0.1, width=0.5)
+    # plt.imshow(TF.to_pil_image(new_img))
+    # plt.show()

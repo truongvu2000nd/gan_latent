@@ -220,5 +220,6 @@ class FHighway(nn.Module):
 if __name__ == "__main__":
     from torchinfo import summary
     # model = FHighway(size=256, n_latent=18, num_layers=7, act="lrelu", share_weights=False)
-    model = FModel(n_latent=18, num_layers=3)
-    summary(model, (1, 18, 512))
+    model = FModel(n_latent=14, num_layers=2)
+    summary(model, (1, 14, 512))
+    print(model)
