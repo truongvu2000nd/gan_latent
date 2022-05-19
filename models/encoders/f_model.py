@@ -66,19 +66,6 @@ def create_mlp(
     return torch.nn.Sequential(OrderedDict(layers))
 
 
-class Mapper(nn.Module):
-
-    def __init__(self, opts, latent_dim=512):
-        super(Mapper, self).__init__()
-
-        self.opts = opts
-        
-
-    def forward(self, x):
-        x = self.mapping(x)
-        return x
-
-
 class FModel(nn.Module):
     def __init__(self, n_latent, latent_dim=512, num_layers=2):
         super().__init__()
@@ -202,6 +189,39 @@ class Highway(nn.Module):
             x = gate * nonlinear + (1 - gate) * linear
 
         return x
+
+
+class FHighway2(nn.Module):
+    def __init__(
+        self,
+        size=256,
+        n_latent=18,
+        num_layers=5,
+        act="relu",
+        momentum=0.1,
+        share_weights=False,
+    ):
+        super().__init__()
+        self.highways = nn.ModuleList(
+            [
+                Highway(
+                    size,
+                    num_layers,
+                    act=act,
+                    momentum=momentum,
+                    share_weights=share_weights,
+                )
+                for _ in range(n_latent)
+            ]
+        )
+
+    def forward(self, w):
+        outputs = []
+        for i in range(w.size(1)):
+            out = self.highways[i](out)
+            outputs.append(out.unsqueeze(1))
+        outputs = torch.cat(outputs, dim=1)
+        return outputs
 
 
 class FHighway(nn.Module):
