@@ -1,0 +1,1 @@
+from .face_swap_images2images import FSGAN
