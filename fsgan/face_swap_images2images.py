@@ -109,7 +109,7 @@ class FSGAN(nn.Module):
         super().__init__()
         # Initialize models
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, flip_input=False, device="cpu")
+        self.fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, flip_input=False)
         self.device = device
 
         # Load face reenactment model
