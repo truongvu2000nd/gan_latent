@@ -139,7 +139,7 @@ dmypy.json
 .vscode/
 
 # Data folder
-data/
+# data/
 
 # Outputs folder
 outputs/
