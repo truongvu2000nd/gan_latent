@@ -3,25 +3,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-pretrained_models = {'pascal': 'path/to/pretrained_model.pth'}
+# Code is borrowed from
+# https://github.com/meetshah1995/pytorch-semseg/commits/master/ptsemseg/models/unet.py
 
 
-# Adapted from: https://github.com/meetshah1995/pytorch-semseg/blob/master/ptsemseg/models/unet.py
 class UNet(nn.Module):
     """ Defines a variant of the UNet architecture described in the paper:
     `"U-Net: Convolutional Networks for Biomedical Image Segmentation <https://arxiv.org/pdf/1505.04597.pdf>`_.
-
     Args:
         feature_scale (int): Divides the intermediate feature map number of channels
-        n_classes (int): Output number of channels
+        num_classes (int): Output number of channels
         is_deconv (bool): If True, transposed convolution will be used for the upsampling operation instead of
             bilinear interpolation
         in_channels (int): Input number of channels
         is_batchnorm (bool): If True, enables the use of batch normalization
     """
-    def __init__(self, feature_scale=4, n_classes=21, is_deconv=False, in_channels=3, is_batchnorm=True):
+    def __init__(self, feature_scale=1, num_classes=21, is_deconv=False, in_channels=3, is_batchnorm=True):
         super(UNet, self).__init__()
-        self.n_classes = n_classes
+        self.num_classes = num_classes
         self.is_deconv = is_deconv
         self.in_channels = in_channels
         self.is_batchnorm = is_batchnorm
@@ -52,7 +51,7 @@ class UNet(nn.Module):
         self.up_concat1 = UnetUp(filters[1], filters[0], self.is_deconv)
 
         # final conv (without any concat)
-        self.final = nn.Conv2d(filters[0], n_classes, 1)
+        self.final = nn.Conv2d(filters[0], num_classes, 1)
 
     def forward(self, inputs):
         conv1 = self.conv1(inputs)
@@ -80,7 +79,6 @@ class UNet(nn.Module):
 
 class UnetConv2(nn.Module):
     """ Defines the UNet's convolution block.
-
     Args:
         in_size (int): Input number of channels
         out_size (int): Output number of channels
@@ -114,7 +112,6 @@ class UnetConv2(nn.Module):
 
 class UnetUp(nn.Module):
     """ Defines the UNet's upsampling block.
-
     Args:
         in_size (int): Input number of channels
         out_size (int): Output number of channels
@@ -128,7 +125,7 @@ class UnetUp(nn.Module):
             self.up = nn.ConvTranspose2d(in_size, out_size, kernel_size=2, stride=2)
         else:
             self.up = nn.UpsamplingBilinear2d(scale_factor=2)
-        self.conv1d = nn.Conv1d(in_size, out_size, kernel_size=(1,1))
+        self.conv1d = nn.Conv2d(in_size, out_size, kernel_size=(1,1))
 
     def forward(self, inputs1, inputs2):
         outputs2 = self.up(inputs2)
@@ -139,29 +136,11 @@ class UnetUp(nn.Module):
         return self.conv(torch.cat([outputs1, outputs2], 1))
 
 
-def unet(num_classes=21, is_deconv=False, feature_scale=1, is_batchnorm=True, pretrained=False):
-    """ Creates a UNet model with pretrained optiopn.
+if __name__ == '__main__':
+    model = UNet(num_classes=3)
+    # print(model)
+    from torchinfo import summary
 
-    Args:
-        num_classes (int): Output number of channels
-        is_deconv (bool): If True, transposed convolution will be used for the upsampling operation instead of
-                bilinear interpolation
-        feature_scale (int): Divides the intermediate feature map number of channels
-        is_batchnorm (bool): If True, enables the use of batch normalization
-        pretrained (bool): If True, return a pretrained model on Pascal dataset
-
-    Returns:
-        UNet model
-    """
-    if pretrained:
-        model_path = pretrained_models['pascal']
-        model = UNet(n_classes=num_classes, feature_scale=feature_scale, is_batchnorm=is_batchnorm, is_deconv=is_deconv)
-        checkpoint = torch.load(model_path)
-        weights = checkpoint['state_dict']
-        weights['notinuse'] = weights.pop('final.weight')
-        weights['notinuse2'] = weights.pop('final.bias')
-        model.load_state_dict(weights, strict=False)
-    else:
-        model = UNet(n_classes=num_classes, feature_scale=feature_scale, is_batchnorm=is_batchnorm, is_deconv=is_deconv)
-
-    return model
+    ckpt = torch.load("/mnt/D4AEE2D5AEE2AF64/ML-DS/GANs/gan_latent/fsgan/weights/lfw_figaro_unet_256_2_0_segmentation_v1.pth", map_location="cpu")
+    model.load_state_dict(ckpt["state_dict"])
+    # summary(model, (1, 3, 256, 256))
