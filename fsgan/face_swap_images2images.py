@@ -8,16 +8,14 @@ from tqdm import tqdm
 from glob import glob
 from PIL import Image
 import torch
-import landmark_transforms
-import sys
-sys.path.append("..")
-import fsgan.utils.utils as utils
-from fsgan.utils.bbox_utils import scale_bbox
-from fsgan.utils.seg_utils import blend_seg_pred
-from fsgan.utils.obj_factory import obj_factory
-from fsgan.utils.video_utils import extract_landmarks_bboxes_euler_from_images
-from fsgan.utils.img_utils import rgb2tensor, tensor2rgb
-from fsgan.utils.bbox_utils import scale_bbox, crop_img, get_main_bbox
+from . import landmark_transforms
+from .utils import utils as utils
+from .utils.bbox_utils import scale_bbox
+from .utils.seg_utils import blend_seg_pred
+from .utils.obj_factory import obj_factory
+from .utils.video_utils import extract_landmarks_bboxes_euler_from_images
+from .utils.img_utils import rgb2tensor, tensor2rgb
+from .utils.bbox_utils import scale_bbox, crop_img, get_main_bbox
 
 import torch 
 import torch.nn as nn 
@@ -90,11 +88,11 @@ def crop2img(img, crop, bbox):
 class FSGAN(nn.Module):
     def __init__(
         self, arch='res_unet_split.MultiScaleResUNet(in_nc=71,out_nc=(3,3),flat_layers=(2,0,2,3),ngf=128)',
-        reenactment_model_path='./weights/ijbc_msrunet_256_2_0_reenactment_v1.pth',
-        seg_model_path='./weights/lfw_figaro_unet_256_2_0_segmentation_v1.pth',
-        inpainting_model_path='./weights/ijbc_msrunet_256_2_0_inpainting_v1.pth',
-        blend_model_path='./weights/ijbc_msrunet_256_2_0_blending_v1.pth',
-        pose_model_path='./weights/hopenet_robust_alpha1.pth',
+        reenactment_model_path='fsgan/weights/ijbc_msrunet_256_2_0_reenactment_v1.pth',
+        seg_model_path='fsgan/weights/lfw_figaro_unet_256_2_0_segmentation_v1.pth',
+        inpainting_model_path='fsgan/weights/ijbc_msrunet_256_2_0_inpainting_v1.pth',
+        blend_model_path='fsgan/weights/ijbc_msrunet_256_2_0_blending_v1.pth',
+        pose_model_path='fsgan/weights/hopenet_robust_alpha1.pth',
         pil_transforms1=('landmark_transforms.FaceAlignCrop', 'landmark_transforms.Resize(256)',
                         'landmark_transforms.Pyramids(2)'),
         pil_transforms2=('landmark_transforms.FaceAlignCrop', 'landmark_transforms.Resize(256)',
