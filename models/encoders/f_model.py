@@ -218,7 +218,7 @@ class FHighway2(nn.Module):
     def forward(self, w):
         outputs = []
         for i in range(w.size(1)):
-            out = self.highways[i](out)
+            out = self.highways[i](w[:, i])
             outputs.append(out.unsqueeze(1))
         outputs = torch.cat(outputs, dim=1)
         return outputs
@@ -263,7 +263,7 @@ class FHighway(nn.Module):
 
 if __name__ == "__main__":
     from torchinfo import summary
-    # model = FHighway(size=512, n_latent=14, num_layers=2, act="lrelu", share_weights=False)
-    model = FModel(n_latent=14, num_layers=4)
-    summary(model, (1, 14, 512))
+    model = FHighway(size=256, n_latent=18, num_layers=2, act="lrelu", share_weights=False)
+    # model = FModel(n_latent=14, num_layers=4)
+    summary(model, (1, 18, 512))
     # print(model)

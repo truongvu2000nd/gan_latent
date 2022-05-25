@@ -253,7 +253,7 @@ class ArcFaceLoss(nn.Module):
 class BatchMTCNN(nn.Module):
     def __init__(self, device="cpu"):
         super(BatchMTCNN, self).__init__()
-        self.mtcnn = MTCNN(image_size=112, device=device, select_largest=False)
+        self.mtcnn = MTCNN(image_size=112, device=device, select_largest=True)
         self.device = device
 
     def forward(self, imgs, img_size=112, return_masks_bg=True):
