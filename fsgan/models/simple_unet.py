@@ -12,15 +12,15 @@ class UNet(nn.Module):
     `"U-Net: Convolutional Networks for Biomedical Image Segmentation <https://arxiv.org/pdf/1505.04597.pdf>`_.
     Args:
         feature_scale (int): Divides the intermediate feature map number of channels
-        num_classes (int): Output number of channels
+        n_classes (int): Output number of channels
         is_deconv (bool): If True, transposed convolution will be used for the upsampling operation instead of
             bilinear interpolation
         in_channels (int): Input number of channels
         is_batchnorm (bool): If True, enables the use of batch normalization
     """
-    def __init__(self, feature_scale=1, num_classes=21, is_deconv=False, in_channels=3, is_batchnorm=True):
+    def __init__(self, feature_scale=4, n_classes=21, is_deconv=False, in_channels=3, is_batchnorm=True):
         super(UNet, self).__init__()
-        self.num_classes = num_classes
+        self.n_classes = n_classes
         self.is_deconv = is_deconv
         self.in_channels = in_channels
         self.is_batchnorm = is_batchnorm
@@ -51,7 +51,7 @@ class UNet(nn.Module):
         self.up_concat1 = UnetUp(filters[1], filters[0], self.is_deconv)
 
         # final conv (without any concat)
-        self.final = nn.Conv2d(filters[0], num_classes, 1)
+        self.final = nn.Conv2d(filters[0], n_classes, 1)
 
     def forward(self, inputs):
         conv1 = self.conv1(inputs)
