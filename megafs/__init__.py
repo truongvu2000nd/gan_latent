@@ -1,3 +1,3 @@
 from .face_parsing import FaceParsing
-from .megafs import FaceTransferModule, LCR
+from .models import FaceTransferModule, LCR
 from .inference import MegaFS

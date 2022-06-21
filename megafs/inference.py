@@ -1,7 +1,7 @@
 import argparse
 import os
 import cv2
-from megafs import resnet50, HieRFE, Generator, FaceTransferModule
+from .models import resnet50, HieRFE, Generator, FaceTransferModule
 import torch
 import math
 import numpy as np
