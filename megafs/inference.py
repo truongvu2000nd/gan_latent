@@ -58,12 +58,11 @@ class SoftErosion(nn.Module):
         return x, mask
 
 class MegaFS(object):
-    def __init__(self, swap_type, img_root, mask_root):
+    def __init__(self, img_root, ckpt_e, ckpt_f, swap_type="ftm"):
         # Inference Parameters
         self.size = 1024
         self.swap_type = swap_type
         self.img_root = img_root
-        self.mask_root = mask_root
 
         # Model
         # "ftm"    "injection"     "lcr"
@@ -73,7 +72,7 @@ class MegaFS(object):
         swap_indice = 4 
         self.encoder = HieRFE(resnet50(False), num_latents=latent_split, depth=50).cuda()
         self.swapper = FaceTransferModule(num_blocks=num_blocks, swap_indice=swap_indice, num_latents=num_latents, typ=self.swap_type).cuda()
-        ckpt_e = "./checkpoint/{}_final.pth".format(self.swap_type)
+        # ckpt_e = "./checkpoint/{}_final.pth".format(self.swap_type)
         if ckpt_e is not None:
             print("load encoder & swapper:", ckpt_e)
             ckpts = torch.load(ckpt_e, map_location=torch.device("cpu"))
@@ -82,7 +81,7 @@ class MegaFS(object):
             del ckpts
 
         self.generator = Generator(self.size, 512, 8, channel_multiplier=2).cuda()
-        ckpt_f = "./checkpoint/stylegan2-ffhq-config-f.pth"
+        # ckpt_f = "./checkpoint/stylegan2-ffhq-config-f.pth"
         if ckpt_f is not None:
             print("load generator:", ckpt_f)
             ckpts = torch.load(ckpt_f, map_location=torch.device("cpu"))
@@ -145,9 +144,9 @@ class MegaFS(object):
 
             fake_swap_max = torch.max(fake_swap)
             fake_swap_min = torch.min(fake_swap)
-            denormed_fake_swap = (fake_swap[0] - fake_swap_min) / (fake_swap_max - fake_swap_min) * 255.0
-            fake_swap_numpy = denormed_fake_swap.permute((1, 2, 0)).cpu().numpy()
-        return fake_swap_numpy
+            denormed_fake_swap = (fake_swap[0] - fake_swap_min) / (fake_swap_max - fake_swap_min)
+            # fake_swap_numpy = denormed_fake_swap.permute((1, 2, 0)).cpu().numpy()
+        return denormed_fake_swap
     
     def refine(self, swapped_tensor):
         with torch.no_grad():
