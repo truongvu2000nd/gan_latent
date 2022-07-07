@@ -58,11 +58,10 @@ class SoftErosion(nn.Module):
         return x, mask
 
 class MegaFS(object):
-    def __init__(self, img_root, ckpt_e, ckpt_f, swap_type="ftm"):
+    def __init__(self, ckpt_e, ckpt_f, swap_type="ftm"):
         # Inference Parameters
         self.size = 1024
         self.swap_type = swap_type
-        self.img_root = img_root
 
         # Model
         # "ftm"    "injection"     "lcr"

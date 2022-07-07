@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from models.encoders import Backbone, IR_101
 from configs.paths_config import model_paths
 from facenet_pytorch import MTCNN, InceptionResnetV1
+from torch import autograd
 
 
 class ContrastiveLoss(nn.Module):
@@ -282,6 +283,63 @@ class BatchMTCNN(nn.Module):
         return outs
 
 
+def discriminator_loss(real_pred, fake_pred, loss_dict):
+    real_loss = F.softplus(-real_pred).mean()
+    fake_loss = F.softplus(fake_pred).mean()
+
+    loss_dict['d_real_loss'] = float(real_loss)
+    loss_dict['d_fake_loss'] = float(fake_loss)
+
+    return real_loss + fake_loss
+
+
+def discriminator_r1_loss(real_pred, real_w):
+    grad_real, = autograd.grad(
+        outputs=real_pred.sum(), inputs=real_w, create_graph=True
+    )
+    grad_penalty = grad_real.pow(2).reshape(grad_real.shape[0], -1).sum(1).mean()
+
+    return grad_penalty
+
+
+def set_requires_grad(model, flag=True):
+    for p in model.parameters():
+        p.requires_grad = flag
+
+
+def train_discriminator(step, discriminator, discriminator_optimizer, real_w, fake_w, r1=10., d_reg_every=16):
+    loss_dict = {}
+    set_requires_grad(discriminator, True)
+
+    real_pred = discriminator(real_w)
+    fake_pred = discriminator(fake_w)
+    loss = discriminator_loss(real_pred, fake_pred, loss_dict)
+    loss_dict['discriminator_loss'] = float(loss)
+
+    discriminator_optimizer.zero_grad()
+    loss.backward()
+    discriminator_optimizer.step()
+
+    # r1 regularization
+    d_regularize = step % d_reg_every == 0
+    if d_regularize:
+        real_w = real_w.detach()
+        real_w.requires_grad = True
+        real_pred = discriminator(real_w)
+        r1_loss = discriminator_r1_loss(real_pred, real_w)
+
+        discriminator.zero_grad()
+        r1_final_loss = r1 / 2 * r1_loss * d_reg_every
+        r1_final_loss.backward()
+        discriminator_optimizer.step()
+        loss_dict['discriminator_r1_loss'] = float(r1_final_loss)
+
+    # Reset to previous state
+    set_requires_grad(discriminator, False)
+
+    return loss_dict
+
+
 if __name__ == "__main__":
     loss = SupConLossWithMB(bank_size=10, dim=4)
     x1 = torch.randn(4, 4)
@@ -292,8 +350,3 @@ if __name__ == "__main__":
     print(loss1 / loss2)
     loss1, loss2 = loss(x2, x3, nrep=1)
     print(loss1 / loss2)
-
-    # loss = SupConLoss()
-
-    # x1 = torch.randn(4, 2, 5)
-    # loss(x1)
