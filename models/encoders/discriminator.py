@@ -19,7 +19,7 @@ class LatentCodesDiscriminator(nn.Module):
 
     def forward(self, w, ):
         if w.ndim == 3 and self.get_first_codes:
-            w = w[:, :self.get_first_codes, :].view(-1, 512)
+            w = w[:, :self.get_first_codes, :].reshape(-1, 512)
         elif w.ndim == 3:
             w = w.view(-1, 512)
         return self.mlp(w)
